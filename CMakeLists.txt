@@ -3,7 +3,7 @@
 ##                            ##
 ## Authors: Fedi Nabli        ##
 ## Date: 10 Oct 2026          ##
-## Last Modified: 15 Oct 2026 ##
+## Last Modified: 17 Oct 2026 ##
 ################################
 
 cmake_minimum_required(VERSION 3.20)
@@ -42,4 +42,8 @@ endif()
 
 add_subdirectory(utils)
 add_subdirectory(app)
+
+if (MTS_BUILD_TESTS)
+  add_subdirectory(tests)
+endif()
 
