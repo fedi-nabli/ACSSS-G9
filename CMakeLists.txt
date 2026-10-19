@@ -3,7 +3,7 @@
 ##                            ##
 ## Authors: Fedi Nabli        ##
 ## Date: 10 Oct 2026          ##
-## Last Modified: 17 Oct 2026 ##
+## Last Modified: 19 Oct 2026 ##
 ################################
 
 cmake_minimum_required(VERSION 3.20)
@@ -31,6 +31,21 @@ option(VERBOSE_OUTPUT "Enable verbose output" OFF)
 add_compile_definitions($<$<COMPILE_LANGUAGE:C>:_POSIX_C_SOURCE=200809L>)
 
 find_package(Threads REQUIRED)
+
+# Sanitizers (build.sh --tsan / --asan, each in its own build dir).
+# Global on purpose: TSan only works if every target is instrumented.
+set(MTS_SANITIZE "" CACHE STRING "Sanitizers: thread, address, undefined, address,undefined (empty = none)")
+if (MTS_SANITIZE)
+  if (NOT MTS_SANITIZE MATCHES "^(thread|address|undefined|address,undefined)$")
+    message(FATAL_ERROR
+      "MTS_SANITIZE='${MTS_SANITIZE}': expected thread, address, undefined or address,undefined")
+  endif()
+
+  # -fno-sanitize-recover: UBSan otherwise prints and carries on with exit code 0,
+  # so a test with undefined behaviour would still pass
+  add_compile_options(-fsanitize=${MTS_SANITIZE} -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
+  add_link_options(-fsanitize=${MTS_SANITIZE})
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(mts_module)

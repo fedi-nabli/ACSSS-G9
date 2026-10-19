@@ -8,6 +8,7 @@
 
 add_subdirectory(src/time)
 add_subdirectory(src/logger)
+add_subdirectory(src/ring_buffer)
 
 mts_add_umbrella(utils)
 

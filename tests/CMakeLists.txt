@@ -11,4 +11,5 @@
 # utils
 add_subdirectory(utils/time)
 add_subdirectory(utils/logger)
+add_subdirectory(utils/ring_buffer)
 
