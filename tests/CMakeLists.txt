@@ -10,4 +10,5 @@
 
 # utils
 add_subdirectory(utils/time)
+add_subdirectory(utils/logger)
 
