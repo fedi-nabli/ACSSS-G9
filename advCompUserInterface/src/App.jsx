@@ -106,8 +106,8 @@ function App() {
         const input = previousInput * 0.98 + change;
 
         // Suppression with small residual noise
-        const counter =
-          -input + (Math.random() * 2 - 1) * noise;
+        const counter = -input 
+        //+ (Math.random() * 2 - 1) * noise;
 
         const result = input + counter;
 
