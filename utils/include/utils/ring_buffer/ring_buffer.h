@@ -30,7 +30,7 @@
  * Authors: Fedi Nabli
  *
  * Date: 19 Oct 2026
- * Last Modified: 19 Oct 2026
+ * Last Modified: 20 Oct 2026
  * ===================================================================================================
  */
 
@@ -52,9 +52,16 @@ Ring_Buffer* rb_create(size_t capacity, size_t elem_size);
 void rb_destroy(Ring_Buffer* rb);
 
 bool rb_push(Ring_Buffer* rb, const void* elem);
-bool rb_pop(Ring_Buffer* rb, void* out, int64_t timeout_ns);
 
+/* Consumer only. Copies the oldest element into out and removes it.
+ * true = out filled, false = still empty when the timeout ran out, out untouched.
+ * timeout_ns:
+ *   <= 0  poll: never waits
+ *   > 0   wait up to timeout_ns for an element (CLOCK_MONOTONIC), capped at 24 h
+ * There is no infinite wait: consumers use a bounded timeout and check their
+ * own stop flag in between. */bool rb_pop(Ring_Buffer* rb, void* out, int64_t timeout_ns);
 size_t rb_capacity(const Ring_Buffer* rb);
+
 size_t rb_count(const Ring_Buffer* rb);
 uint64_t rb_dropped(const Ring_Buffer* rb);
 

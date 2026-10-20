@@ -11,6 +11,7 @@
  */
 
 #include <mts_test.h>
+#include <utils/time/time.h>
 #include <utils/logger/logger.h>
 #include <utils/ring_buffer/ring_buffer.h>
 
@@ -32,8 +33,10 @@
 
 #ifdef UNDER_TSAN
 #define STRESS_N 300000
+#define HANDOFFS 3000
 #else
 #define STRESS_N 3000000
+#define HANDOFFS 10000
 #endif
 
 /* ---------------------------------------------------------------------------------------------------
@@ -241,7 +244,7 @@ typedef struct Producer
   atomic_bool done;
 } Producer;
 
-static void* produce(void *arg)
+static void* produce(void* arg)
 {
   Producer* p = arg;
   Stress_Elem e;
@@ -260,7 +263,7 @@ static void* produce(void *arg)
   return NULL;
 }
 
-static bool elem_is_whole(const Stress_Elem *e)
+static bool elem_is_whole(const Stress_Elem* e)
 {
   for (int i = 1; i < WORDS; i++)
     if (e->w[i] != e->w[0])
@@ -357,6 +360,202 @@ MTS_TEST(stress_lossy_gaps_match_dropped)
   MTS_ASSERT_EQ(gaps, dropped);
 }
 
+/* ---------------------------------------------------------------------------------------------------
+ * Blocking pop
+ * ------------------------------------------------------------------------------------------------- */
+
+MTS_TEST(pop_zero_and_negative_timeout_return_at_once)
+{
+  Ring_Buffer* rb = rb_create(4, sizeof(int));
+  MTS_ASSERT(rb != NULL);
+
+  int out = 5;
+  int64_t start = mts_time_now_ns();
+  bool a = rb_pop(rb, &out, 0);
+  bool b = rb_pop(rb, &out, -MTS_TIME_NS_PER_S);
+  int64_t elapsed = mts_time_now_ns() - start;
+  rb_destroy(rb);
+
+  MTS_ASSERT(!a);
+  MTS_ASSERT(!b);
+  MTS_ASSERT_EQ(out, 5);
+  MTS_ASSERT_LT(elapsed, 50 * MTS_TIME_NS_PER_MS);
+}
+
+MTS_TEST(pop_times_out_on_empty)
+{
+  Ring_Buffer* rb = rb_create(4, sizeof(int));
+  MTS_ASSERT(rb != NULL);
+
+  int out = 5;
+  int64_t timeout = 20 * MTS_TIME_NS_PER_MS;
+  int64_t start = mts_time_now_ns();
+  bool popped = rb_pop(rb, &out, timeout);
+  int64_t elapsed = mts_time_now_ns() - start;
+  rb_destroy(rb);
+
+  MTS_ASSERT(!popped);
+  MTS_ASSERT_EQ(out, 5);
+  /* Lower bound only: never returns early */
+  MTS_ASSERT_GE(elapsed, timeout);
+}
+
+MTS_TEST(pop_with_timeout_takes_queued_at_once)
+{
+  Ring_Buffer* rb = rb_create(4, sizeof(int));
+  MTS_ASSERT(rb != NULL);
+
+  int in = 9;
+  int out = 0;
+  MTS_ASSERT(rb_push(rb, &in));
+
+  int64_t start = mts_time_now_ns();
+  bool popped = rb_pop(rb, &out, 5 * MTS_TIME_NS_PER_S);
+  int64_t elapsed = mts_time_now_ns() - start;
+  rb_destroy(rb);
+
+  MTS_ASSERT(popped);
+  MTS_ASSERT_EQ(out, 9);
+  MTS_ASSERT_LT(elapsed, 50 * MTS_TIME_NS_PER_MS);
+}
+
+typedef struct Late_Push
+{
+  Ring_Buffer* rb;
+  int64_t delay_ns;
+  int value;
+} Late_Push;
+
+static void* push_after_delay(void *arg)
+{
+  Late_Push* lp = arg;
+  mts_time_sleep_ns(lp->delay_ns);
+  rb_push(lp->rb, &lp->value);
+  return NULL;
+}
+
+MTS_TEST(pop_wakes_on_push)
+{
+  Late_Push lp = { .rb = rb_create(4, sizeof(int)), .delay_ns = 50 * MTS_TIME_NS_PER_MS, .value = 77 };
+  MTS_ASSERT(lp.rb != NULL);
+
+  pthread_t thread;
+  int64_t start = mts_time_now_ns();
+  MTS_ASSERT_EQ(pthread_create(&thread, NULL, push_after_delay, &lp), 0);
+
+  int out = 0;
+  bool popped = rb_pop(lp.rb, &out, 5 * MTS_TIME_NS_PER_S);
+  int64_t elapsed = mts_time_now_ns() - start;
+
+  pthread_join(thread, NULL);
+  rb_destroy(lp.rb);
+
+  MTS_ASSERT(popped);
+  MTS_ASSERT_EQ(out, 77);
+  MTS_ASSERT_GE(elapsed, lp.delay_ns);
+  /* Woken by the push, not by the 5 s timeout */
+  MTS_ASSERT_LT(elapsed, MTS_TIME_NS_PER_S);
+}
+
+/* Lost-wakeup stress. The race lives in the few hundred ns between the
+ * consumer finding the queue empty and announcing its sleep: a push landing
+ * there is the one a broken handshake loses. Sleeping between pushes never
+ * hits that window (a sleep lasts tens of us, and the window opens right
+ * after a pop, while the producer is asleep). So both sides spin a random
+ * few hundred ns instead, one element at a time: the producer waits until
+ * its last element was taken, spins, pushes; the consumer spins, pops. The
+ * consumer then enters rb_pop at a random offset around each push.
+ * A lost wakeup is a pop that stalls until its timeout. */
+
+typedef struct Handoff
+{
+  Ring_Buffer* rb;
+  int count;
+  atomic_int taken; /* elements the consumer has popped */
+} Handoff;
+
+static uint32_t xorshift32(uint32_t* state)
+{
+  uint32_t x = *state;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  return *state = x;
+}
+
+/* Busy wait of n iterations: finer than any sleep */
+static void spin(uint32_t n)
+{
+  for (volatile uint32_t i = 0; i < n; i++)
+  {
+  }
+}
+
+static void* handoff_producer(void *arg)
+{
+  Handoff* h = arg;
+  uint32_t rng = 0x9E3779B9u; /* fixed seed: reproducible */
+
+  for (int i = 0; i < h->count; i++)
+  {
+    /* One element in flight at a time */
+    while (atomic_load_explicit(&h->taken, memory_order_acquire) < i)
+      sched_yield();
+
+    spin(xorshift32(&rng) % 512);
+    rb_push(h->rb, &i);
+  }
+  return NULL;
+}
+
+MTS_TEST(stress_no_lost_wakeup)
+{
+  Handoff h = { .rb = rb_create(4, sizeof(int)), .count = HANDOFFS };
+  MTS_ASSERT(h.rb != NULL);
+  atomic_init(&h.taken, 0);
+
+  pthread_t thread;
+  MTS_ASSERT_EQ(pthread_create(&thread, NULL, handoff_producer, &h), 0);
+
+  uint32_t rng = 0x85EBCA6Bu;
+  int received = 0;
+  bool ordered = true;
+  int64_t worst_wait = 0;
+
+  for (int i = 0; i < HANDOFFS; i++)
+  {
+    spin(xorshift32(&rng) % 512);
+
+    int out = -1;
+    int64_t start = mts_time_now_ns();
+    bool popped = rb_pop(h.rb, &out, 2 * MTS_TIME_NS_PER_S);
+    int64_t wait = mts_time_now_ns() - start;
+
+    if (wait > worst_wait)
+      worst_wait = wait;
+    if (!popped)
+      break;
+
+    ordered = ordered && out == i;
+    received++;
+    atomic_store_explicit(&h.taken, i + 1, memory_order_release);
+
+    /* A stall means a lost wakeup: stop instead of stalling 2 s per handoff */
+    if (worst_wait >= 500 * MTS_TIME_NS_PER_MS)
+      break;
+  }
+
+  /* Unblock the producer if we stopped early */
+  atomic_store_explicit(&h.taken, HANDOFFS, memory_order_release);
+  pthread_join(thread, NULL);
+  rb_destroy(h.rb);
+
+  /* Every handoff is a few us: anything near the 2 s timeout is a lost wakeup */
+  MTS_ASSERT_LT(worst_wait, 500 * MTS_TIME_NS_PER_MS);
+  MTS_ASSERT_EQ(received, HANDOFFS);
+  MTS_ASSERT(ordered);
+}
+
 static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(create_rejects_zero),
   MTS_TEST_ENTRY(create_rounds_to_power_of_two),
@@ -369,7 +568,11 @@ static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(odd_element_sizes),
   MTS_TEST_ENTRY(stress_lossless_in_order),
   MTS_TEST_ENTRY(stress_lossy_gaps_match_dropped),
-};
+  MTS_TEST_ENTRY(pop_zero_and_negative_timeout_return_at_once),
+  MTS_TEST_ENTRY(pop_times_out_on_empty),
+  MTS_TEST_ENTRY(pop_with_timeout_takes_queued_at_once),
+  MTS_TEST_ENTRY(pop_wakes_on_push),
+  MTS_TEST_ENTRY(stress_no_lost_wakeup),};
 
 MTS_TEST_MAIN(tests)
 
