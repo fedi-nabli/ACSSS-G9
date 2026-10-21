@@ -12,4 +12,14 @@
 add_subdirectory(utils/time)
 add_subdirectory(utils/logger)
 add_subdirectory(utils/ring_buffer)
+add_subdirectory(utils/mailbox)
+
+# core
+add_subdirectory(core/types)
+
+
+# app
+add_subdirectory(app/link)
+add_subdirectory(app/hat)
+add_subdirectory(app/ws)
 

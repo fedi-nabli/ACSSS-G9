@@ -10,3 +10,9 @@ mts_add_test(utils ring_buffer
   SOURCES ring_buffer_tests.c
   DEPS mts::utils::logger mts::utils::time Threads::Threads
 )
+
+mts_add_test(utils ring_buffer VARIANT cpp
+  SOURCES queue_tests.cc
+  DEPS mts::utils::logger mts::utils::time Threads::Threads
+)
+

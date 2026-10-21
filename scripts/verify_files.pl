@@ -22,9 +22,6 @@ my @required_files = (
 
   # Core Library
 
-  # Server App
-  'app/server/CMakeLists.txt',
-
   # App Sources
 
   # Main

@@ -3,7 +3,7 @@
 ##                            ##
 ## Authors: Fedi Nabli        ##
 ## Date: 10 Oct 2026          ##
-## Last Modified: 19 Oct 2026 ##
+## Last Modified: 20 Oct 2026 ##
 ################################
 
 cmake_minimum_required(VERSION 3.20)
@@ -27,6 +27,9 @@ endif()
 
 option(MTS_BUILD_TESTS "Build unit tests" ON)
 option(VERBOSE_OUTPUT "Enable verbose output" OFF)
+# The single compile flag for the real hardware: decides whether Hat_Real is
+# built at all (needs RTIMULib). The runtime hat.mode picks real or sim.
+option(MTS_WITH_RTIMU "Build Hat_Real (needs RTIMULib)" OFF)
 
 add_compile_definitions($<$<COMPILE_LANGUAGE:C>:_POSIX_C_SOURCE=200809L>)
 
@@ -56,6 +59,7 @@ if (MTS_BUILD_TESTS)
 endif()
 
 add_subdirectory(utils)
+add_subdirectory(core)
 add_subdirectory(app)
 
 if (MTS_BUILD_TESTS)

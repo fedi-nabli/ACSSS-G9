@@ -6,6 +6,11 @@
 ## Last Modified: 15 Oct 2026 ##
 ################################
 
+# Threads, resources, wiring. Modules first, then the executable
+add_subdirectory(src/link)
+add_subdirectory(src/hat)
+add_subdirectory(src/ws)
+
 add_executable(mts_app main.cc)
 target_compile_options(mts_app PRIVATE ${MTS_WARNING_FLAGS})
 target_link_libraries(mts_app PRIVATE Threads::Threads)

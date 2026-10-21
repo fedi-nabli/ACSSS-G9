@@ -9,11 +9,11 @@
  * ===================================================================================================
  */
 
-#include "utils/time/time.h"
 #if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
 #define _DARWIN_C_SOURCE
 #endif
 
+#include <utils/time/time.h>
 #include <utils/logger/logger.h>
 #include <utils/ring_buffer/ring_buffer.h>
 
@@ -83,7 +83,7 @@ static bool init_sync(Ring_Buffer* rb)
     rc = pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
     if (rc == 0)
     {
-      rc = pthread_cond_init(&rb->cond_, NULL);
+      rc = pthread_cond_init(&rb->cond_, &attr);
     }
     pthread_condattr_destroy(&attr);
   }
@@ -278,7 +278,7 @@ size_t rb_count(const Ring_Buffer* rb)
   uint64_t tail = atomic_load_explicit(&rb->tail_, memory_order_acquire);
   uint64_t head = atomic_load_explicit(&rb->head_, memory_order_acquire);
 
-  int count = (int64_t)(head - tail);
+  int64_t count = (int64_t)(head - tail);
   if (count < 0)
   {
     return 0;
