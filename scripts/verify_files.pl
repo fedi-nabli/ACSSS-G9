@@ -12,10 +12,15 @@ my @required_files = (
   # Utils
   'utils/CMakeLists.txt',
 
-  # Core Library
+  # Tools
+  'tools/test/CMakeLists.txt',
+  'tools/test/mts_test.h',
+  'tools/test/mts_test.c',
+  'tools/test/tests/self_fail.c',
+  'tools/test/tests/self_pass.c',
+  'tools/test/tests/self_pass_cpp.cc',
 
-  # Server App
-  'app/server/CMakeLists.txt',
+  # Core Library
 
   # App Sources
 

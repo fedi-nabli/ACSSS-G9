@@ -6,7 +6,10 @@ BUILD_TYPE=Debug
 BUILD_VERBOSE=OFF
 CLEAN_BUILD=0
 ACTION=build
+BUILD_DIR=build
+SANITIZE=""
 BUILD_TESTS=ON
+WITH_HAT=OFF
 RUN_TESTS=0
 TEST_FILTER=""
 JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
@@ -22,6 +25,9 @@ Usage: ./build.sh [options]
   -t, --test      Build then run the tests
   --filter=REGEX  Build then run only the tests matching REGEX (implies -t)
   --no-tests      Do not build the tests
+  --hat           Build Hat_Real for the Pi's Sense HAT (needs RTIMULib). The app then uses the real HAT
+  --tsan          ThreadSanitizer build in build-tsan/, runs the tests
+  --asan          Address + UB sanitizer build in build-asan/, run the tests
 USAGE
 }
 
@@ -47,29 +53,34 @@ build_project() {
     build_args="$build_args --verbose"
   fi
 
-  echo "Building project (VERBOSE=${BUILD_VERBOSE}) (MODE=${BUILD_TYPE}) (TESTS=${BUILD_TESTS})"
-  cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DMTS_BUILD_TESTS="${BUILD_TESTS}"
-  cmake --build build $build_args
+  echo "Building project (VERBOSE=${BUILD_VERBOSE}) (MODE=${BUILD_TYPE}) (TESTS=${BUILD_TESTS}) (HAT=${WITH_HAT})"
+  cmake -S . -B "$BUILD_DIR" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DMTS_BUILD_TESTS="${BUILD_TESTS}" -DMTS_SANITIZE="${SANITIZE}" -DMTS_WITH_RTIMU="${WITH_HAT}"
+  cmake --build "$BUILD_DIR" $build_args
+
+  if [ -n "$SANITIZE" ]; then
+    return 0
+  fi
+
   echo "Creating bin directory..."
   mkdir -p bin
   echo "Copying final binary to bin directory..."
-  cp build/app/mts_app bin/mts_app
+  cp "$BUILD_DIR/app/mts_app" bin/mts_app
   echo "Type ./bin/mts_app to run"
 }
 
 run_tests() {
   echo "Running tests..."
   if [ -n "$TEST_FILTER" ]; then
-    ctest --test-dir build --output-on-failure -j "$JOBS" -R "$TEST_FILTER"
+    ctest --test-dir "$BUILD_DIR" --output-on-failure -j "$JOBS" -R "$TEST_FILTER"
   else
-    ctest --test-dir build --output-on-failure -j "$JOBS"
+    ctest --test-dir "$BUILD_DIR" --output-on-failure -j "$JOBS"
   fi
 }
 
 cleanup() {
   echo "Cleaning project..."
   echo "Removing build directory..."
-  rm -rf build
+  rm -rf build build-tsan build-asan
   echo "Removing bin directory..."
   rm -rf bin
   echo "Cleaned up project"
@@ -95,6 +106,23 @@ for arg in "$@"; do
     ;;
     --no-tests)
       BUILD_TESTS=OFF
+    ;;
+    --hat)
+      WITH_HAT=ON
+    ;;
+    --tsan|--asan)
+      if [ -n "$SANITIZE" ]; then
+        echo "--tsan and --asan cannot be combined"
+        exit 1
+      fi
+      if [ "$arg" == "--tsan" ]; then
+        SANITIZE=thread
+        BUILD_DIR=build-tsan
+      else
+        SANITIZE=address,undefined
+        BUILD_DIR=build-asan
+      fi
+      RUN_TESTS=1
     ;;
     -d)
       ACTION=clean
@@ -134,4 +162,3 @@ case "$ACTION" in
     fi
   ;;
 esac
-

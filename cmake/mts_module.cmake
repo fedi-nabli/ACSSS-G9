@@ -3,7 +3,7 @@
 ##                            ##
 ## Authors: Fedi Nabli        ##
 ## Date: 15 Oct 2026          ##
-## Last Modified: 15 Oct 2026 ##
+## Last Modified: 20 Oct 2026 ##
 ################################
 
 include_guard(GLOBAL)
@@ -13,18 +13,16 @@ set(MTS_WARNING_FLAGS -Wall -Wextra -Wpedantic)
 # mts_add_module(<lib> <name>
 #   [SOURCES        file...] no sources means header only (INTERFACE) library
 #   [DEPS           target...] public: anyone linking this module get them too
-#   [PRIVATE_DEPS   target...] used by the implementation only
-#   [TESTS          file...]) sources of one test executable, registered with CTest
+#   [PRIVATE_DEPS   target...]) used by the implementation only
 #
 # Creates:
 #   mts_<lib>_<name>        static library or interface is header only
 #   mts::<lib>::<name>      alias, the name everyone else links against
-#   mts_<lib>_<name>_tests  test executable, CTest name "<lib>.<name>" (only when MTS_BUILD_TESTS is on and tests are given)
 #
 # Must be called from <lib>/src/<name>/CMakeLists.txt and
 # <lib>/include/<lib>/<name>/ must exist, both are checked at configure time
 function(mts_add_module lib name)
-  cmake_parse_arguments(PARSE_ARGV 2 arg "" "" "SOURCES;DEPS;PRIVATE_DEPS;TESTS")
+  cmake_parse_arguments(PARSE_ARGV 2 arg "" "" "SOURCES;DEPS;PRIVATE_DEPS")
   if (arg_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR
       "mts_add_module(${lib} ${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
@@ -64,14 +62,64 @@ function(mts_add_module lib name)
 
   # Remembered for mts_add_umbrella
   set_property(GLOBAL APPEND PROPERTY MTS_${lib}_MODULES ${target})
+endfunction()
 
-  if (MTS_BUILD_TESTS AND arg_TESTS)
-    set(test_target "${target}_tests")
-    add_executable(${test_target} ${arg_TESTS})
-    target_link_libraries(${test_target} PRIVATE ${target} mts::test)
-    target_compile_options(${test_target} PRIVATE ${MTS_WARNING_FLAGS})
-    add_test(NAME "${lib}.${name}" COMMAND ${test_target})
+# mts_add_test(<lib> <name>
+#   [VARIANT name]             extra test executable for the same module
+#                              (e.g. C++ tests next to the C ones)
+#   SOURCES file...            sources of the test executable
+#   [DEPS   target...])        extra libraries (Threads::Threads, test helpers, ...)
+#
+# Creates:
+#   mts_<lib>_<name>[_<variant>]_tests  test executable linking mts::<lib>::<name> and mts::test
+#   CTest test "<lib>.<name>[.<variant>]"
+#
+# Must be called from tests/<lib>/<name>/CMakeLists.txt, and the module
+# mts::<lib>::<name> must already exist (tests/ is added after the libs).
+# Both are checked at configure time.
+function(mts_add_test lib name)
+  cmake_parse_arguments(PARSE_ARGV 2 arg "" "VARIANT" "SOURCES;DEPS")
+  if (arg_UNPARSED_ARGUMENTS)
+    message(FATAL_ERROR
+      "mts_add_test(${lib} ${name}): unknown arguments: ${arg_UNPARSED_ARGUMENTS}")
   endif()
+  if (arg_KEYWORDS_MISSING_VALUES)
+    message(FATAL_ERROR
+      "mts_add_test(${lib} ${name}): no value given for ${arg_KEYWORDS_MISSING_VALUES}")
+  endif()
+  if (NOT arg_SOURCES)
+    message(FATAL_ERROR "mts_add_test(${lib} ${name}): no SOURCES given")
+  endif()
+
+  # Layout check
+  set(expected_dir "${PROJECT_SOURCE_DIR}/tests/${lib}/${name}")
+  if (NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL expected_dir)
+    message(FATAL_ERROR
+      "mts_add_test(${lib} ${name}) called from ${CMAKE_CURRENT_SOURCE_DIR}, "
+      "expected ${expected_dir}")
+  endif()
+  if (NOT TARGET mts::${lib}::${name})
+    message(FATAL_ERROR
+      "mts_add_test(${lib} ${name}): no module mts::${lib}::${name} "
+      "(module removed, or tests/ added before ${lib}/?)")
+  endif()
+
+  set(test_target "mts_${lib}_${name}_tests")
+  set(test_name "${lib}.${name}")
+  if (arg_VARIANT)
+    # Lower case, digits, underscore: it ends up in a target and a test name
+    if (NOT arg_VARIANT MATCHES "^[a-z0-9_]+$")
+      message(FATAL_ERROR
+        "mts_add_test(${lib} ${name}): VARIANT '${arg_VARIANT}' must match [a-z0-9_]+")
+    endif()
+    set(test_target "mts_${lib}_${name}_${arg_VARIANT}_tests")
+    set(test_name "${lib}.${name}.${arg_VARIANT}")
+  endif()
+
+  add_executable(${test_target} ${arg_SOURCES})
+  target_link_libraries(${test_target} PRIVATE mts::${lib}::${name} mts::test ${arg_DEPS})
+  target_compile_options(${test_target} PRIVATE ${MTS_WARNING_FLAGS})
+  add_test(NAME "${test_name}" COMMAND ${test_target})
 endfunction()
 
 # mts_add_umbrella(<lib>)
