@@ -256,29 +256,8 @@ int main(int argc, char **argv) {
             rows[i].truth[a] - (float)(sum / n);
     }
 }
-    const double dt = 1.0 / TEST_SAMPLE_RATE;
-    const uint64_t dt_ns = (uint64_t)(dt * 1.0e9);
-    const uint64_t count =
-        (uint64_t)(TEST_DURATION_S * TEST_SAMPLE_RATE);
-
-    for (uint64_t i = 0; i < count; ++i) {
-        Raw_Sample sample;
-        memset(&sample, 0, sizeof(sample));
-
-        sample.seq = i;
-        sample.t_ns = (int64_t)(i * dt_ns);
-
-        const double t = (double)i / TEST_SAMPLE_RATE;
-        const double truth =
-            TEST_AMPLITUDE *
-            sin(2.0 * M_PI * TEST_FREQUENCY_HZ * t);
-
-        /* Inject the synthetic sinusoid into gyro X. */
-        sample.gyro[0] = (float)truth;
-
-        /* Feed one sample through the actual filter. */
-        kalman_update(&k, &sample);
-
+    
+    for (size_t i = 0; i < count; ++i) {
         kalman_update(&k, &rows[i].sample);
 
         print_frequency_changes(&k, &rows[i].sample); 
@@ -293,21 +272,6 @@ int main(int argc, char **argv) {
             }
         }
     }
-    // for (size_t i = 0; i < count; ++i) {
-    //     kalman_update(&k, &rows[i].sample);
-
-    //     print_frequency_changes(&k, &rows[i].sample); 
-    //     for (int a = 0; a < AXES; ++a) {
-    //         Kalman_Estimate now = kalman_get(&k, (Kalman_Axis)a);
-    //         ap[i].frequency[a] = now.frequency_hz;
-    //         ap[i].confidence[a] = now.confidence;
-    //         for (int h = 0; h < HORIZONS; ++h) {
-    //             Kalman_Estimate p = kalman_predict(&k, (Kalman_Axis)a, horizon_s[h]);
-    //             ap[i].pred[a][h] = p.predicted_tremor;
-    //             ap[i].valid[a][h] = (unsigned char)(p.valid ? 1 : 0);
-    //         }
-    //     }
-    // }
 
     FILE *out = fopen(output_path, "w");
     if (!out) {

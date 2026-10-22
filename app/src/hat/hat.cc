@@ -19,7 +19,7 @@
 #include "hat_sim.hpp"
 
 #if defined(MTS_WITH_RTIMU)
-#include "hat_real.hpp"
+#include <app/hat/hat_real.hpp>
 #endif
 
 #include <app/hat/hat.hpp>

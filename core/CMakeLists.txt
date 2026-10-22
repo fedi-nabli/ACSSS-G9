@@ -16,7 +16,7 @@ add_subdirectory(src/separation)
 add_subdirectory(src/detect)
 add_subdirectory(src/predict)
 
-
+add_subdirectory(src/onnx)
 add_subdirectory(src/kalman)
 
 mts_add_umbrella(core)
