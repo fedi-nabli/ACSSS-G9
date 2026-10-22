@@ -27,3 +27,15 @@ if (NOT MTS_WITH_RTIMU)
   target_compile_definitions(mts_app_hat_sim_tests PRIVATE MTS_TEST_NO_RTIMU=1)
 endif()
 
+# Real-HAT hardware integration test is opt-in
+option(MTS_ENABLE_HAT_REAL_TESTS
+  "Enable tests requiring a physical Sense HAT"
+  OFF
+)
+
+if (MTS_WITH_RTIMU AND MTS_ENABLE_HAT_REAL_TESTS)
+  mts_add_test(app hat VARIANT real
+    SOURCES hat_real_tests.cc
+    DEPS mts::utils::time mts::utils::logger
+  )
+endif()

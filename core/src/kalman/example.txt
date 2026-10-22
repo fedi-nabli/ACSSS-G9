@@ -1,0 +1,19 @@
+#include "core/kalman/kalman.h"
+
+Kalman filter;
+
+Kalman_Config config = kalman_default_config();
+config.min_frequency_hz = 3.0f;
+config.max_frequency_hz = 12.0f;
+
+if (!kalman_init(&filter, &config)) {
+    /* Handle invalid configuration. */
+}
+
+/* For every sample received from the sample queue: */
+kalman_update(&filter, &sample);
+
+Kalman_Estimate x = kalman_predict(
+    &filter, KALMAN_GYRO_X, 0.020f);
+
+/* x.predicted_tremor is the estimated value 20 ms ahead. */
