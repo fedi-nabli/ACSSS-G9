@@ -27,11 +27,28 @@ export type DropCounters = {
   processing_to_server: number
 }
 
+export type Imu6 = {
+  ax_g: number;
+  ay_g: number;
+  az_g: number;
+  gx_rad_s: number;
+  gy_rad_s: number;
+  gz_rad_s: number;
+};
+
+export type ImuReading = Imu6 & {
+  mx_uT?: number;
+  my_uT?: number;
+  mz_uT?: number;
+};
+
 export type Prediction = {
-  predictor_id: string
-  forecast_mm: Vec3 | null
-  residual_mm: Vec3 | null
-}
+  predictor_id: string;
+  forecast_mm: Vec3 | null;
+  residual_mm: Vec3 | null;
+
+  forecast_imu?: Imu6[];
+};
 
 export type FrameMessage = {
   type: 'frame'
@@ -47,8 +64,9 @@ export type FrameMessage = {
   tremor_confidence: number
   pipeline_delay_ms: number
   counter_signal_mm: Vec3 | null
-  predictions: Prediction[]
-}
+  imu?: ImuReading;
+  predictions: Prediction[];
+};
 
 export type MetricsMessage = {
   type: 'metrics'

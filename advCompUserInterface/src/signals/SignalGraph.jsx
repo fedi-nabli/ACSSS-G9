@@ -10,10 +10,11 @@ import {
 
 export default function SignalGraph({ title, data }) {
   const latest = data.at(-1) ?? {
-    input: 0,
-    counter: 0,
-    result: 0
-  };
+  input: 0,
+  prediction: null,
+  counter: 0,
+  result: 0
+};
 
   return (
     <div className="bg-gray-900 rounded-xl p-4">
@@ -77,6 +78,18 @@ export default function SignalGraph({ title, data }) {
               stroke="#22c55e"
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false}
+            />
+
+            {/* ML prediction */}
+            <Line
+              type="linear"
+              dataKey="prediction"
+              stroke="#facc15"
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              dot={false}
+              connectNulls={false}
               isAnimationActive={false}
             />
 

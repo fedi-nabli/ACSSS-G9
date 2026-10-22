@@ -10,6 +10,7 @@ import type {
   SpectrumMessage,
   StatusMessage,
   Vec3,
+  Imu6,
 } from './types.ts'
 
 const SERVER_STATES = new Set<ServerState>([
@@ -103,6 +104,42 @@ function asVec3OrNull(value: unknown): Vec3 | null | undefined {
   return asVec3(value)
 }
 
+function asImu6(value: unknown): Imu6 | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const keys = [
+    'ax_g', 'ay_g', 'az_g',
+    'gx_rad_s', 'gy_rad_s', 'gz_rad_s'
+  ] as const;
+
+  for (const key of keys) {
+    if (asNumber(value[key]) === undefined) return undefined;
+  }
+
+  return {
+    ax_g: value.ax_g as number,
+    ay_g: value.ay_g as number,
+    az_g: value.az_g as number,
+    gx_rad_s: value.gx_rad_s as number,
+    gy_rad_s: value.gy_rad_s as number,
+    gz_rad_s: value.gz_rad_s as number
+  };
+}
+
+function asImuArray(value: unknown): Imu6[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const result: Imu6[] = [];
+
+  for (const item of value) {
+    const imu = asImu6(item);
+    if (!imu) return undefined;
+    result.push(imu);
+  }
+
+  return result;
+}
+
 function asNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined
   const out: number[] = []
@@ -125,18 +162,35 @@ function asStringArray(value: unknown): string[] | undefined {
 }
 
 function asPrediction(value: unknown): Prediction | undefined {
-  if (!isRecord(value)) return undefined
-  const predictor_id = asString(value.predictor_id)
-  const forecast_mm = asVec3OrNull(value.forecast_mm)
-  const residual_mm = asVec3OrNull(value.residual_mm)
+  if (!isRecord(value)) return undefined;
+
+  const predictor_id = asString(value.predictor_id);
+  const forecast_mm = asVec3OrNull(value.forecast_mm);
+  const residual_mm = asVec3OrNull(value.residual_mm);
+
   if (
     predictor_id === undefined ||
     forecast_mm === undefined ||
     residual_mm === undefined
   ) {
-    return undefined
+    return undefined;
   }
-  return { predictor_id, forecast_mm, residual_mm }
+
+  const forecast_imu =
+    value.forecast_imu === undefined
+      ? undefined
+      : asImuArray(value.forecast_imu);
+
+  if (value.forecast_imu !== undefined && forecast_imu === undefined) {
+    return undefined;
+  }
+
+  return {
+    predictor_id,
+    forecast_mm,
+    residual_mm,
+    forecast_imu
+  };
 }
 
 function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
@@ -151,6 +205,13 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
   const tremor_amplitude_mm = asNumber(raw.tremor_amplitude_mm)
   const tremor_confidence = asNumber(raw.tremor_confidence)
   const pipeline_delay_ms = asNumber(raw.pipeline_delay_ms)
+  const imu = raw.imu === undefined
+    ? undefined
+    : asImu6(raw.imu);
+
+  if (raw.imu !== undefined && imu === undefined) {
+    return undefined;
+  }
   const counter_signal_mm = asVec3OrNull(raw.counter_signal_mm)
   if (
     sequence === undefined ||
@@ -182,6 +243,7 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     type: 'frame',
     sequence,
     timestamp_ns,
+    ... (imu !== undefined ? { imu } : {}),
     gap_before,
     tremor_active,
     tremor_displacement_mm,

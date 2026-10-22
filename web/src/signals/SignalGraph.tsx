@@ -1,3 +1,4 @@
+
 import {
   LineChart,
   Line,
@@ -8,24 +9,33 @@ import {
   ReferenceLine
 } from "recharts";
 
-export default function SignalGraph({ title, data }) {
-  const latest = data.at(-1) ?? {
-    input: 0,
-    counter: 0,
-    result: 0
-  };
+export type SignalPoint = {
+  time: number;
+  input: number | null;
+  prediction: number | null;
+  counter: number | null;
+  result: number | null;
+};
+
+type SignalGraphProps = {
+  title: string;
+  data: SignalPoint[];
+};
+
+export default function SignalGraph({ title, data }: SignalGraphProps) {
+  const latest = data.filter(p => p.input !== null).at(-1);
+
+  const fmt = (n: number | null | undefined) => n?.toFixed(3) ?? "—";
 
   return (
     <div className="bg-gray-900 rounded-xl p-4">
-
       <h2 className="text-white font-semibold mb-2">
         {title}
       </h2>
 
-      <div className="h-52">
+      <div style={{ width: "100%", height: 220, minWidth: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
-
             <CartesianGrid
               strokeDasharray="3 3"
               strokeOpacity={0.15}
@@ -45,12 +55,8 @@ export default function SignalGraph({ title, data }) {
               tickLine={false}
             />
 
-            <ReferenceLine
-              y={0}
-              strokeOpacity={0.3}
-            />
+            <ReferenceLine y={0} strokeOpacity={0.3} />
 
-            {/* Input */}
             <Line
               type="linear"
               dataKey="input"
@@ -60,7 +66,6 @@ export default function SignalGraph({ title, data }) {
               isAnimationActive={false}
             />
 
-            {/* Counter */}
             <Line
               type="linear"
               dataKey="counter"
@@ -70,7 +75,6 @@ export default function SignalGraph({ title, data }) {
               isAnimationActive={false}
             />
 
-            {/* Result */}
             <Line
               type="linear"
               dataKey="result"
@@ -80,35 +84,41 @@ export default function SignalGraph({ title, data }) {
               isAnimationActive={false}
             />
 
+            <Line
+              type="linear"
+              dataKey="prediction"
+              stroke="#facc15"
+              strokeWidth={2}
+              strokeDasharray="5 5"
+              dot={false}
+              isAnimationActive={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="flex justify-between mt-3 text-sm">
-
+      <div className="grid grid-cols-4 justify-between mt-3 text-sm">
         <div>
           <p className="text-gray-400">Input</p>
           <p className="text-blue-500 font-mono">
-            {latest.input.toFixed(3)}
+            {fmt(latest?.input)}
           </p>
         </div>
 
         <div>
           <p className="text-gray-400">Counter</p>
           <p className="text-red-500 font-mono">
-            {latest.counter.toFixed(3)}
+            {fmt(latest?.counter)}
           </p>
         </div>
 
         <div>
           <p className="text-gray-400">Result</p>
           <p className="text-green-500 font-mono">
-            {latest.result.toFixed(3)}
+            {fmt(latest?.result)}
           </p>
         </div>
-
       </div>
-
     </div>
   );
 }

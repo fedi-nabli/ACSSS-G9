@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { SpectrumPlot } from './components/SpectrumPlot.tsx'
 import { useMtsClient } from './hooks/useMtsClient.ts'
 import { isCommandAllowed } from './mts/commands.ts'
-import {SignalGraph} from './signals/SignalGraph copy.tsx';
+import SignalGraph from './signals/SignalGraph.tsx';
+import { buildSeries } from "./signals/buildSeries.tsx";
 import type { CommandName, ServerState } from './mts/types.ts'
 import './App.css'
 
@@ -17,51 +18,33 @@ function commandAllowed(state: ServerState | undefined, command: CommandName): b
 
 const MAX_POINTS = 150;
 
-type Axis = "x" | "y" | "z" | "rx" | "ry" | "rz";
+type Axis = "accX" | "accY" | "accZ" | "tilt" | "roll" | "yaw";
 
 type PlotPoint = {
   time: number;
   input: number;
+  prediction?: number | null;
   counter: number;
   result: number;
 };
 
-function convertFrame(
-  frame: unknown,
-  axis: Axis,
-  sampleRate: number
-): PlotPoint | null {
 
-  // Example protocol structure.
-  // Replace raw and counter with the actual
-  // field names from mts/types.ts.
-  const data = frame as {
-    sequence: number;
-    raw?: Partial<Record<Axis, number>>;
-    counter?: Partial<Record<Axis, number>>;
-  };
+type RawFrame = {
+  sequence: number;
+  timestamp_ns?: number;
+  tremor_acceleration_ms2?: number[];
+  orientation_wxyz?: number[];
 
-  const input = data.raw?.[axis];
-  const counter = data.counter?.[axis];
+  predicted_acceleration_ms2?: number[];
+  counter_acceleration_ms2?: number[];
 
-  if (
-    !Number.isFinite(input) ||
-    !Number.isFinite(counter)
-  ) {
-    return null;
-  }
-
-  return {
-    time: data.sequence / sampleRate,
-    input: input!,
-    counter: counter!,
-    result: input! + counter!
-  };
-}
+  predicted_orientation_deg?: number[];
+  counter_orientation_deg?: number[];
+};
 
 function App() {
   const mts = useMtsClient()
-  const [horizon, setHorizon] = useState('30')
+  const [horizon, setHorizon] = useState('100')
   const [metricsHz, setMetricsHz] = useState('2')
   const [spectrumHz, setSpectrumHz] = useState('5')
   const connected = mts.connectionState === 'open'
@@ -73,29 +56,26 @@ function App() {
   const activeId = mts.status?.active_predictor_id ?? ''
 
   const signals = useMemo(() => {
-  const frames = mts.frames.slice(-MAX_POINTS);
-  const rate = mts.status?.sample_rate_hz || 200;
 
-  const getData = (axis: Axis) =>
-    frames.flatMap((frame) => {
-      const point = convertFrame(frame, axis, rate);
-      return point ? [point] : [];
-    });
+    const frames = mts.frames.slice(-30);
+    const id = mts.status?.active_predictor_id ?? "";
+    const hz = mts.status?.sample_rate_hz ?? 200;
 
-  return {
-    posX: getData("x"),
-    posY: getData("y"),
-    posZ: getData("z"),
-    tiltX: getData("rx"),
-    tiltY: getData("ry"),
-    tiltZ: getData("rz"),
-  };
+    return {
+      accX: buildSeries(frames, "ax_g", id, hz),
+      accY: buildSeries(frames, "ay_g", id, hz),
+      accZ: buildSeries(frames, "az_g", id, hz),
 
-}, [
-  mts.frames,
-  mts.lastFrame?.sequence,
-  mts.status?.sample_rate_hz
-]);
+      gyroX: buildSeries(frames, "gx_rad_s", id, hz),
+      gyroY: buildSeries(frames, "gy_rad_s", id, hz),
+      gyroZ: buildSeries(frames, "gz_rad_s", id, hz)
+    };
+  }, [
+    mts.lastFrame?.sequence,
+    mts.status?.active_predictor_id,
+    mts.status?.sample_rate_hz
+  ]);
+
 
   const dropTotal = useMemo(() => {
     const d = mts.status?.drops
@@ -253,14 +233,14 @@ function App() {
       <section className="grid">
         <article className="card wide">
           <section className="grid grid-cols-3 gap-4">
+          
+            <SignalGraph title="Acceleration X" data={signals.accX} />
+            <SignalGraph title="Acceleration Y" data={signals.accY} />
+            <SignalGraph title="Acceleration Z" data={signals.accZ} />
 
-            <SignalGraph title="X Position" data={signals.posX} />
-            <SignalGraph title="Y Position" data={signals.posY} />
-            <SignalGraph title="Z Position" data={signals.posZ} />
-
-            <SignalGraph title="X Tilt" data={signals.tiltX} />
-            <SignalGraph title="Y Tilt" data={signals.tiltY} />
-            <SignalGraph title="Z Tilt" data={signals.tiltZ} />
+            <SignalGraph title="Gyroscope X" data={signals.gyroX} />
+            <SignalGraph title="Gyroscope Y" data={signals.gyroY} />
+            <SignalGraph title="Gyroscope Z" data={signals.gyroZ} />
 
           </section>
           <dl className="stats">

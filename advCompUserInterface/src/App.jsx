@@ -97,17 +97,13 @@ function App() {
       const createPoint = (
         previousPoint,
         amplitude,
-        noise = 0
       ) => {
         const change = (Math.random() * 2 - 1) * amplitude;
         const previousInput = previousPoint?.input ?? 0;
 
-        // Random movement with gradual return toward zero
         const input = previousInput * 0.98 + change;
 
-        // Suppression with small residual noise
         const counter = -input 
-        //+ (Math.random() * 2 - 1) * noise;
 
         const result = input + counter;
 
