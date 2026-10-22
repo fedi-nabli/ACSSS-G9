@@ -142,7 +142,7 @@ Hat_Info Hat_Real::info() const
 
 std::unique_ptr<Hat> hat_real_open(const Hat_Config& cfg)
 {
-  RTIMUSettings* settings = new RTIMUSettings("RTIMULib");
+  RTIMUSettings* settings = new RTIMUSettings("/etc/RTIMULib");
   RTIMU* imu = RTIMU::createIMU(settings);
 
   if (imu == nullptr)
