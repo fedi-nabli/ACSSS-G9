@@ -23,7 +23,14 @@ add_subdirectory(utils/mailbox)
 
 # core
 add_subdirectory(core/types)
-
+add_subdirectory(core/filters)
+add_subdirectory(core/kalman)
+add_subdirectory(core/wflc)
+add_subdirectory(core/calibration)
+add_subdirectory(core/fusion)
+add_subdirectory(core/separation)
+add_subdirectory(core/detect)
+add_subdirectory(core/predict)
 
 # app
 add_subdirectory(app/link)

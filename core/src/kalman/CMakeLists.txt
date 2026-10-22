@@ -1,40 +1,15 @@
 ################################
 ## core/kalman                ##
 ##                            ##
-## Authors: Chad Davis        ##
-## Date: 21 Oct 2026          ##
-## Last Modified: 21 Oct 2026 ##
+## Authors: Fedi Nabli        ##
+## Date: 22 Oct 2026          ##
+## Last Modified: 22 Oct 2026 ##
 ################################
 
+# Building block: linear Kalman filter, scalar measurement, plain struct.
+# libm (isfinite is a macro, but keep the dependency explicit for the
+# predictors that link through us)
 mts_add_module(core kalman
   SOURCES kalman.c
-  DEPS mts::core::types
-)
-
-add_executable(mts_core_kalman_replay
-    kalman_replay_test.c
-)
-
-target_link_libraries(mts_core_kalman_replay
-    PRIVATE
-        mts::core::kalman
-        m
-)
-
-target_compile_options(mts_core_kalman_replay
-    PRIVATE ${MTS_WARNING_FLAGS}
-)
-
-add_executable(mts_core_kalman_synthetic_test
-    kalman_synthetic_test.c
-)
-
-target_link_libraries(mts_core_kalman_synthetic_test
-    PRIVATE
-        mts::core::kalman
-        m
-)
-
-target_compile_options(mts_core_kalman_synthetic_test
-    PRIVATE ${MTS_WARNING_FLAGS}
+  PRIVATE_DEPS mts::utils::logger m
 )

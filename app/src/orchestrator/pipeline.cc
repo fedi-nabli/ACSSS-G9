@@ -81,7 +81,7 @@ bool Pipeline::start()
   control_gen_ = ctl.cfg_gen;
 
   server_ = std::make_unique<Server>(cfg_.server, info.opened_t_ns, frames_, status_, commands_, replies_);
-  processing_ = std::make_unique<Processing>(samples_, control_, frames_, led_);
+  processing_ = std::make_unique<Processing>(info.rate_hz, samples_, control_, frames_, led_);
   worker_ = std::make_unique<Hat_Worker>(std::move(hat), samples_, led_, cfg_.worker);
 
   if (!server_->start() || !processing_->start() || !worker_->start())

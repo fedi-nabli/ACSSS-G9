@@ -1,6 +1,11 @@
 /* ===================================================================================================
  * tests/app/orchestrator/pipeline_tests.cc
  *
+ * The whole program in one process: Pipeline with Hat_Sim (paced, 100 Hz),
+ * its orchestrator stepped on a thread of its own as main would, and the UI
+ * played by the blocking test client over real loopback. Calibration steps
+ * are shortened, everything else is the shipping configuration.
+ *
  * Authors: Fedi Nabli
  * Date: 22 Oct 2026
  * Last Modified: 22 Oct 2026
@@ -152,11 +157,13 @@ MTS_TEST(ui_session_from_boot_to_stop)
   MTS_ASSERT(has(got[0], "\"type\":\"ack\""));
   MTS_ASSERT(ui.read_line_containing("\"state\":\"running\"", line));
 
-  // 100 frames: consecutive, 10 ms apart, the final shape with warm-up nulls
+  // 300 frames: consecutive, 10 ms apart, carrying the tremor once the
+  // detector has seen it: displacement, inversion's forecast, the counter
   long long prev_seq = -1;
   long long prev_t = -1;
-  const int64_t frames_deadline = mts_time_now_ns() + 5 * MTS_TIME_NS_PER_S; // 100 frames take 1 s
-  for (int n = 0; n < 100;)
+  int with_counter = 0;
+  const int64_t frames_deadline = mts_time_now_ns() + 8 * MTS_TIME_NS_PER_S; // 300 frames take 3 s
+  for (int n = 0; n < 300;)
   {
     // Heartbeats keep coming without frames: the deadline, not read_line, ends a frameless run
     MTS_ASSERT_LT(mts_time_now_ns(), frames_deadline);
@@ -173,17 +180,30 @@ MTS_TEST(ui_session_from_boot_to_stop)
       MTS_ASSERT_EQ(t - prev_t, 10 * MTS_TIME_NS_PER_MS);
     }
     MTS_ASSERT(has(line, "\"gap_before\":false"));
-    MTS_ASSERT(has(line, "\"tremor_frequency_hz\":0,"));
-    MTS_ASSERT(has(line, "\"counter_signal_mm\":null"));
-    MTS_ASSERT(has(line, "\"predictions\":[{\"predictor_id\":\"inversion\",\"forecast_mm\":null,\"residual_mm\":null},"
-                         "{\"predictor_id\":\"wflc\",\"forecast_mm\":null,\"residual_mm\":null}]"));
+    // Running reset the predictors: the first h = 3 frames have no forecast made for them yet
+    MTS_ASSERT(has(line, n < 3 ? "\"predictions\":[{\"predictor_id\":\"inversion\",\"forecast_mm\":null"
+                               : "\"predictions\":[{\"predictor_id\":\"inversion\",\"forecast_mm\":["));
+    // wflc, the active one: null while it locks, then forecasting, and the counter follows it
+    const bool wflc_forecasts = has(line, "{\"predictor_id\":\"wflc\",\"forecast_mm\":[");
+    if (wflc_forecasts && has(line, "\"tremor_active\":true"))
+    {
+      MTS_ASSERT(!has(line, "\"counter_signal_mm\":null"));
+      with_counter++;
+    }
+    if (!wflc_forecasts)
+    {
+      MTS_ASSERT(has(line, "\"counter_signal_mm\":null"));
+    }
     prev_seq = seq;
     prev_t = t;
     n++;
   }
+  // Within the 3 s, the detector turned on and wflc locked
+  MTS_ASSERT_GT(with_counter, 100);
 
   // setup while running: acked, shows in status, frames follow the new set
-  MTS_ASSERT(ui.send_text("{\"type\":\"command\",\"id\":4,\"command\":\"setup\",\"enabled_predictor_ids\":[\"wflc\"]}"));
+  MTS_ASSERT(ui.send_text("{\"type\":\"command\",\"id\":4,\"command\":\"setup\",\"enabled_predictor_ids\":[\"wflc\"],"
+                          "\"active_predictor_id\":\"wflc\"}"));
   MTS_ASSERT(read_all(ui, { "\"id\":4", "\"enabled_predictor_ids\":[\"wflc\"]" }, got));
   MTS_ASSERT(has(got[0], "\"type\":\"ack\""));
   MTS_ASSERT(ui.read_line_containing("\"predictions\":[{\"predictor_id\":\"wflc\",", line));

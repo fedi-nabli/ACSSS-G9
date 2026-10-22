@@ -1,105 +1,90 @@
+/* ===================================================================================================
+ * core/include/core/kalman/kalman.h
+ *
+ * Linear Kalman filter with a scalar measurement, as a building block:
+ *
+ *   state:       x[k+1] = F x[k] + w,   w ~ N(0, Q)     (n states, n <= KALMAN_N_MAX)
+ *   measurement: z[k]   = H x[k] + v,   v ~ N(0, r)     (one number)
+ *
+ * One measurement per step is all this program ever has (one axis, one
+ * sample), and it makes the innovation variance S a scalar: the gain is
+ * K = P H' / S, with no matrix inversion anywhere.
+ *
+ * Plain data, no heap, fixed maximum size: predictors embed a Kalman by
+ * value in their state block (predict.h), and copying one copies the
+ * filter. Matrices are row-major, n x n, passed as const double* (a
+ * double F[2][2] is passed as &F[0][0]).
+ *
+ * Numerics: the covariance update is the Joseph form,
+ *   P = (I - K H) P (I - K H)' + K r K'
+ * which keeps P symmetric positive semi-definite under rounding (the short
+ * form P = (I - K H) P does not, over hours of samples), and P is
+ * re-symmetrized after every step.
+ *
+ * Use, per sample: kalman_predict, then kalman_update with the measurement.
+ * kalman_project forecasts the measurement steps ahead without touching
+ * the filter.
+ *
+ * Authors: Fedi Nabli, Chad Davis
+ * Date: 22 Oct 2026
+ * Last Modified: 22 Oct 2026
+ * ===================================================================================================
+ */
 
-
-
-
-
-#ifndef MTS_CORE_KALMAN_H
-#define MTS_CORE_KALMAN_H
+#ifndef MTS_CORE_KALMAN_KALMAN_H
+#define MTS_CORE_KALMAN_KALMAN_H
 
 #include <stdbool.h>
 #include <stdint.h>
-
-#include "core/types/raw_sample.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define KALMAN_AXIS_COUNT 3
-#define KALMAN_ESTIMATOR_COUNT 6
-#define KALMAN_MAX_WINDOW 256
+// Covers a 2-state oscillator, two harmonics, or constant-acceleration tracking
+#define KALMAN_N_MAX 4
 
-typedef enum {
-    KALMAN_ACCEL_X = 0,
-    KALMAN_ACCEL_Y,
-    KALMAN_ACCEL_Z,
-    KALMAN_GYRO_X,
-    KALMAN_GYRO_Y,
-    KALMAN_GYRO_Z
-} Kalman_Axis;
-
-typedef struct {
-    float min_frequency_hz;
-    float max_frequency_hz;
-    float frequency_step_hz;
-    float process_noise;
-    float measurement_noise;
-    float max_sample_gap_s;
-    uint16_t window_size;
-    uint16_t frequency_update_samples;
-} Kalman_Config;
-
-typedef struct {
-    float frequency_hz;
-    float amplitude;
-    float current_tremor;
-    float predicted_tremor;
-    float confidence;
-    bool valid;
-} Kalman_Estimate;
-
-/*
- * Fixed-storage implementation. No heap allocation.
- * Treat fields as private to the module.
- */
-typedef struct {
-    float values[KALMAN_MAX_WINDOW];
-    int64_t timestamps_ns[KALMAN_MAX_WINDOW];
-    uint16_t head;
-    uint16_t count;
-    uint16_t samples_since_frequency_update;
-
-    float frequency_hz;
-    float x;
-    float v;
-    float p00, p01, p10, p11;
-    float confidence;
-
-    int64_t last_timestamp_ns;
-    uint64_t last_seq;
-    bool initialized;
-    bool frequency_valid;
-} Kalman_Axis_State;
-
-typedef struct {
-    Kalman_Config config;
-    Kalman_Axis_State axes[KALMAN_ESTIMATOR_COUNT];
+typedef struct Kalman
+{
+  uint32_t n; // states in use
+  uint32_t pad;
+  double x[KALMAN_N_MAX]; // state estimate
+  double P[KALMAN_N_MAX][KALMAN_N_MAX]; // its covariance
+  double F[KALMAN_N_MAX][KALMAN_N_MAX]; // transition
+  double Q[KALMAN_N_MAX][KALMAN_N_MAX]; // process noise covariance
+  double H[KALMAN_N_MAX]; // measurement row
+  double r; // measurement noise variance
+  double innovation; // last z - H x before the update (diagnostics, adaptive tuning)
+  double innovation_var; // last S = H P H' + r
 } Kalman;
 
-Kalman_Config kalman_default_config(void);
+/* Sets up an n-state filter. F, Q, P0: n x n row-major. H, x0: n.
+ * false (and a logged error): n not in [1, KALMAN_N_MAX], r < 0, or a value
+ * not finite. */
+bool kalman_init(Kalman* k, uint32_t n, const double* F, const double* H, const double* Q, double r, const double* x0,
+                 const double* P0);
 
-bool kalman_init(Kalman *kalman, const Kalman_Config *config);
+// Back to x0, P0 (same model). x0: n, P0: n x n
+void kalman_reset(Kalman* k, const double* x0, const double* P0);
 
-void kalman_reset(Kalman *kalman);
+// Time update: x = F x, P = F P F' + Q
+void kalman_predict(Kalman* k);
 
-/* Consumes accel and gyro. Magnetometer data is ignored. */
-void kalman_update(Kalman *kalman, const Raw_Sample *sample);
+/* Measurement update with z. false (nothing changed): S <= 0 or a value not
+ * finite, so the filter is never poisoned by one bad sample. */
+bool kalman_update(Kalman* k, double z);
 
-/* Predicts the tremor component horizon_seconds into the future. */
-Kalman_Estimate kalman_predict(
-    const Kalman *kalman,
-    Kalman_Axis axis,
-    float horizon_seconds
-);
+/* The measurement expected 1 .. steps ahead, H F^j x for j = 1 .. steps,
+ * into out[0 .. steps-1]. The filter is not changed. */
+void kalman_project(const Kalman* k, uint32_t steps, double* out);
 
-/* Returns the latest state estimate without advancing it. */
-Kalman_Estimate kalman_get(
-    const Kalman *kalman,
-    Kalman_Axis axis
-);
+// Model changes (e.g. a new frequency for an oscillator). n x n row-major
+void kalman_set_F(Kalman* k, const double* F);
+void kalman_set_Q(Kalman* k, const double* Q);
+void kalman_set_r(Kalman* k, double r);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif /* MTS_CORE_KALMAN_KALMAN_H */

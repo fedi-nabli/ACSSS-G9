@@ -7,6 +7,7 @@
  * ===================================================================================================
  */
 
+#include "core/types/predictor_id.h"
 #include <app/orchestrator/orchestrator.hpp>
 
 #include <cmath>

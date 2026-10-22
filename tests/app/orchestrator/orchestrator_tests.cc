@@ -9,6 +9,7 @@
  * ===================================================================================================
  */
 
+#include "core/types/predictor_id.h"
 #include <mts_test.h>
 #include <app/orchestrator/orchestrator.hpp>
 
@@ -32,6 +33,11 @@ Command command(uint32_t kind, uint32_t id = 1)
   c.id = id;
   c.client = CLIENT;
   return c;
+}
+
+Predictor_Id default_runtime_active()
+{
+  return mts::default_runtime_settings().active_predictor_id;
 }
 
 uint32_t bit(Predictor_Id id)
@@ -294,7 +300,7 @@ MTS_TEST(setup_without_change_keeps_the_generation)
   const uint32_t gen = r.orch.control().cfg_gen;
   Command c = command(CMD_SETUP);
   c.set_mask = SETTING_ACTIVE_PREDICTOR;
-  c.settings.active_predictor_id = PREDICTOR_WFLC; // already active
+  c.settings.active_predictor_id = default_runtime_active(); // already active
   MTS_ASSERT_EQ(r.orch.handle(c, r.now).error, ERR_NONE);
   MTS_ASSERT_EQ(r.orch.control().cfg_gen, gen); // predictors are not reset for nothing
 }
@@ -313,7 +319,7 @@ MTS_TEST(setup_active_must_be_enabled)
 
   // Enabled set that drops the (unchanged) active one
   c.set_mask = SETTING_ENABLED_PREDICTORS;
-  c.settings.enabled_mask = bit(PREDICTOR_INVERSION);
+  c.settings.enabled_mask = bit(PREDICTOR_HARMONIC);
   MTS_ASSERT_EQ(r.orch.handle(c, r.now).error, ERR_INVALID_ARGUMENT);
 
   // Refused as a whole: nothing changed
