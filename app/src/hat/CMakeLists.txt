@@ -7,9 +7,9 @@
 ################################
 
 mts_add_module(app hat
-  SOURCES hat.cc hat_sim.cc
-  DEPS mts::core::types mts::app::link
-  PRIVATE_DEPS mts::utils::time mts::utils::logger
+  SOURCES hat.cc hat_sim.cc hat_worker.cc
+  DEPS mts::core::types mts::app::link mts::utils::mailbox mts::utils::time Threads::Threads
+  PRIVATE_DEPS mts::utils::logger
 )
 
 # Real hardware: only with -DMTS_WITH_RTIMU=ON. Hat_Real adds here:

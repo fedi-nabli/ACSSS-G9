@@ -5,7 +5,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 21 Oct 2026
  * ===================================================================================================
  */
 
@@ -133,9 +133,9 @@ void Hat_Sim::show(const Led_Command& cmd)
 
 Hat_Info Hat_Sim::info() const
 {
-  // Virtual timestamps: the rate is exactly the requested one
-  return { true, cfg_.sample_rate_hz, accel_range_ms2_, gyro_range_rads_ };
-}
+  // Virtual timestamps: the rate is exactly the requested one, and sample 0
+  // is stamped exactly at the opening
+  return { true, cfg_.sample_rate_hz, accel_range_ms2_, gyro_range_rads_, t0_ns_ };}
 
 } // namespace mts
 

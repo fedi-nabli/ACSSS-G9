@@ -9,7 +9,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 22 Oct 2026
  * ===================================================================================================
  */
 
@@ -153,6 +153,8 @@ MTS_TEST(first_timestamp_is_now)
   MTS_ASSERT(hat->read_sample(s) == mts::Hat_Status::ok);
   MTS_ASSERT_GE(s.t_ns, before);
   MTS_ASSERT_LT(s.t_ns - before, MTS_TIME_NS_PER_S);
+  // The protocol's origin: sample 0 is stamped exactly at the opening
+  MTS_ASSERT_EQ(hat->info().opened_t_ns, s.t_ns);
 }
 
 MTS_TEST(paced_waits_for_each_sample)

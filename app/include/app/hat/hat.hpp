@@ -21,7 +21,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 21 Oct 2026
  * ===================================================================================================
  */
 
@@ -87,6 +87,7 @@ struct Hat_Info
   double rate_hz; // measured actual rate (Hat_Sim: exactly the requested one)
   double accel_range_ms2;
   double gyro_range_rads;
+  int64_t opened_t_ns;
 };
 
 class Hat
