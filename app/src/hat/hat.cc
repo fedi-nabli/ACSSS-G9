@@ -75,5 +75,13 @@ std::unique_ptr<Hat> hat_open(const Hat_Config& cfg)
   return nullptr;
 }
 
+bool hat_real_available()
+{
+#if defined(MTS_WITH_RTIMU)
+  return true;
+#else
+  return false;
+#endif
+}
 } // namespace mts
 

@@ -128,6 +128,7 @@ inline bool hat_gyro_range_supported(uint32_t dps)
  *  - mode is real but the build has no RTIMULib (MTS_WITH_RTIMU off)
  *  - the hardware cannot be opened */
 std::unique_ptr<Hat> hat_open(const Hat_Config& cfg);
+bool hat_real_available();
 
 } // namespace mts
 

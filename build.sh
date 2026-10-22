@@ -9,6 +9,7 @@ ACTION=build
 BUILD_DIR=build
 SANITIZE=""
 BUILD_TESTS=ON
+WITH_HAT=OFF
 RUN_TESTS=0
 TEST_FILTER=""
 JOBS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)
@@ -24,6 +25,7 @@ Usage: ./build.sh [options]
   -t, --test      Build then run the tests
   --filter=REGEX  Build then run only the tests matching REGEX (implies -t)
   --no-tests      Do not build the tests
+  --hat           Build Hat_Real for the Pi's Sense HAT (needs RTIMULib). The app then uses the real HAT
   --tsan          ThreadSanitizer build in build-tsan/, runs the tests
   --asan          Address + UB sanitizer build in build-asan/, run the tests
 USAGE
@@ -51,8 +53,8 @@ build_project() {
     build_args="$build_args --verbose"
   fi
 
-  echo "Building project (VERBOSE=${BUILD_VERBOSE}) (MODE=${BUILD_TYPE}) (TESTS=${BUILD_TESTS})"
-  cmake -S . -B "$BUILD_DIR" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DMTS_BUILD_TESTS="${BUILD_TESTS}" -DMTS_SANITIZE="${SANITIZE}"
+  echo "Building project (VERBOSE=${BUILD_VERBOSE}) (MODE=${BUILD_TYPE}) (TESTS=${BUILD_TESTS}) (HAT=${WITH_HAT})"
+  cmake -S . -B "$BUILD_DIR" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DMTS_BUILD_TESTS="${BUILD_TESTS}" -DMTS_SANITIZE="${SANITIZE}" -DMTS_WITH_RTIMU="${WITH_HAT}"
   cmake --build "$BUILD_DIR" $build_args
 
   if [ -n "$SANITIZE" ]; then
@@ -104,6 +106,9 @@ for arg in "$@"; do
     ;;
     --no-tests)
       BUILD_TESTS=OFF
+    ;;
+    --hat)
+      WITH_HAT=ON
     ;;
     --tsan|--asan)
       if [ -n "$SANITIZE" ]; then
@@ -157,4 +162,3 @@ case "$ACTION" in
     fi
   ;;
 esac
-

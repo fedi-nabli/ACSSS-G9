@@ -14,6 +14,7 @@
 #include <utils/logger/logger.h>
 #include <utils/time/time.h>
 
+#include <cstdio>
 #include <atomic>
 #include <csignal>
 #include <cstring>
@@ -42,16 +43,31 @@ bool install_signal_handlers()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+  bool force_sim = false;
+  for (int i = 1; i < argc; i++)
+  {
+    if (std::strcmp(argv[i], "--sim") == 0)
+    {
+      force_sim = true;
+    }
+    else
+    {
+      std::fprintf(stderr, "Usage: %s [--sim]\n  --sim  use the simulated Hat even in a build with the real one\n",
+                    argv[0]);
+      return 2;
+    }
+  }
+
   if (!install_signal_handlers())
   {
     MTS_LOG_ERROR("mts: could not install the signal handlers");
     return 1;
   }
 
-  // Slice 1: the defaults are the configuration
   mts::Pipeline_Config cfg;
+  cfg.hat.mode = mts::hat_real_available() && !force_sim ? mts::Hat_Mode::real : mts::Hat_Mode::sim;
   mts::Pipeline pipeline(cfg);
   if (!pipeline.start())
   {
