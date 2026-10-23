@@ -210,7 +210,7 @@ std::unique_ptr<Hat> hat_real_open(const Hat_Config& cfg)
   settings->m_LSM9DS1AccelSampleRate = rate.accel_code;
   settings->m_LSM9DS1GyroFsr = gyro_fsr_code(cfg.gyro_range_dps);
   settings->m_LSM9DS1AccelFsr = accel_fsr_code(cfg.accel_range_g);
-  settings->m_LSM9DS1CompassSampleRate = LSM9DS1_COMPASS_SAMPLERATE_80;
+  // settings->m_LSM9DS1CompassSampleRate = LSM9DS1_COMPASS_SAMPLERATE_80; 
 
   RTIMU* imu = RTIMU::createIMU(settings);
   if (imu == nullptr || imu->IMUType() == RTIMU_TYPE_NULL)
