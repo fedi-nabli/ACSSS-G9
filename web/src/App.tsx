@@ -75,7 +75,13 @@ function App() {
     mts.status?.active_predictor_id,
     mts.status?.sample_rate_hz
   ]);
-
+console.log("IMU:", mts.lastFrame?.imu);
+console.log("Predictions:", mts.lastFrame?.predictions);
+console.log("Frame:", mts.lastFrame);
+console.log("Active predictor:", activeId);
+console.log("Forecast:", mts.lastFrame?.predictions
+  .find(p => p.predictor_id === activeId)?.forecast_imu);
+console.log("Graph data:", signals.accX.slice(-7));
 
   const dropTotal = useMemo(() => {
     const d = mts.status?.drops

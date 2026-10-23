@@ -347,6 +347,29 @@ void Protocol_Encoder::encode_frame(const Output_Frame& f, std::string& out) con
   append_key(out, "tremor_acceleration_ms2");
   append_vec3(out, f.tremor_acc, 1.0);
 
+
+  // Raw IMU data
+  append_key(out, "imu");
+  out += "{\"ax_g\":";
+  append_number(out, f.imu_acc.v[0] / 9.80665);
+
+  append_key(out, "ay_g");
+  append_number(out, f.imu_acc.v[1] / 9.80665);
+
+  append_key(out, "az_g");
+  append_number(out, f.imu_acc.v[2] / 9.80665);
+
+  append_key(out, "gx_rad_s");
+  append_number(out, f.imu_gyro.v[0]);
+
+  append_key(out, "gy_rad_s");
+  append_number(out, f.imu_gyro.v[1]);
+
+  append_key(out, "gz_rad_s");
+  append_number(out, f.imu_gyro.v[2]);
+
+  out.push_back('}');
+
   append_key(out, "orientation_wxyz");
   out.push_back('[');
   for (int i = 0; i < 4; i++)
