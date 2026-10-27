@@ -126,6 +126,12 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
   // Stage 1
   Raw_Sample s;
   calibration_apply(&cal_, &raw, &s);
+  // Copy calibrated IMU data into the output frame
+  for (int i = 0; i < 3; i++)
+  {
+    out.imu_acc.v[i] = s.accel[i];
+    out.imu_gyro.v[i] = s.gyro[i];
+}
   Fusion_Output fo;
   fusion_update(fusion_, &s, &fo);
   Separation_Output so;

@@ -55,6 +55,8 @@ typedef struct Output_Frame
   uint32_t n_predictions; // entries used in predictions[], <= P_MAX
   Vec3 tremor_disp; // m, body frame
   Vec3 tremor_acc; // m/s^2, body frame
+  Vec3 imu_acc;   // Raw acceleration, m/s²
+  Vec3 imu_gyro;  // Raw angular velocity, rad/s
   Quat orientation; // body -> world
   double tremor_hz;
   double tremor_amp; // m, peak
