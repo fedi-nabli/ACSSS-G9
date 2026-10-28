@@ -8,6 +8,8 @@
  *  - info() reports that real rate, and opened_t_ns (was missing: the
  *    protocol's timestamps were uptime instead of time since open)
  *  - RTIMULib's fusion is off (RTFUSION_TYPE_NULL): core/fusion does it
+ *  - one sample per period: RTIMULib's IMURead also says "new data" when
+ *    only accel or only gyro is new, which doubled the rate (see read_sample)
  *  - read_sample gives up after 10 sample periods without data and returns
  *    error, so the Hat_Worker can report hat_error and stop() can join
  *    (it waited forever before)
@@ -16,9 +18,9 @@
  *    own 80 Hz, so a value that changed is a fresh one
  *  - the settings object is owned and freed (it leaked)
  *
- * Authors: Fedi Nabli
+ * Authors: Fedi Nabli, Chad Davis
  * Date: 22 Oct 2026
- * Last Modified: 22 Oct 2026
+ * Last Modified: 28 Oct 2026
  * ===================================================================================================
  */
 
@@ -38,6 +40,9 @@ namespace
 
 // Give up on a read after this many periods without new data
 constexpr int READ_TIMEOUT_PERIODS = 10;
+
+// Log the measured rate once, after this many samples
+constexpr int RATE_CHECK_SAMPLES = 1190;
 
 struct Lsm9ds1_Rate
 {
@@ -109,6 +114,7 @@ Hat_Real::Hat_Real(const Hat_Config& cfg, RTIMUSettings* settings, RTIMU* imu, d
   , opened_t_ns_(mts_time_now_ns())
   , seq_(0)
   , last_t_ns_(0)
+  , first_t_ns_(0)
   , last_mag_{ 0.0f, 0.0f, 0.0f }
   , led_{}
 {
@@ -122,10 +128,19 @@ Hat_Real::~Hat_Real()
 
 Hat_Status Hat_Real::read_sample(Raw_Sample& out)
 {
-  // RTIMULib reports "no new data yet" as false: poll, but not forever
+  /* RTIMULib reports "no new data yet" as false: poll, but not forever.
+   * It also reports true when only ONE of accel and gyro has new data
+   * (status & 0x3): their flags rise a moment apart, so a polling reader
+   * sees each period twice, at ~2x the rate (measured: 4.6 ms steps at
+   * 119 Hz). A reading less than 3/4 of a period after the last sample is
+   * that second half of the same period: skipped, keep polling */
   const int64_t deadline = mts_time_now_ns() + READ_TIMEOUT_PERIODS * period_ns_;
-  while (!imu_->IMURead())
+  for (;;)
   {
+    if (imu_->IMURead() && (last_t_ns_ == 0 || mts_time_now_ns() - last_t_ns_ >= period_ns_ * 3 / 4))
+    {
+      break;
+    }
     if (mts_time_now_ns() >= deadline)
     {
       MTS_LOG_WARN("hat_real: no data for %d sample periods", READ_TIMEOUT_PERIODS);
@@ -177,6 +192,17 @@ Hat_Status Hat_Real::read_sample(Raw_Sample& out)
     {
       s.flags |= SAMPLE_SATURATED;
     }
+  }
+
+  // Once, after ~10 s: the rate the samples really came at, to check against info()
+  if (seq_ == 0)
+  {
+    first_t_ns_ = now_ns;
+  }
+  else if (seq_ == RATE_CHECK_SAMPLES)
+  {
+    MTS_LOG_INFO("hat_real: measured %.1f Hz over %d samples (configured %.1f Hz)",
+                 RATE_CHECK_SAMPLES * 1e9 / (double)(now_ns - first_t_ns_), RATE_CHECK_SAMPLES, rate_hz_);
   }
 
   last_t_ns_ = now_ns;
