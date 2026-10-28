@@ -9,7 +9,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 22 Oct 2026
+ * Last Modified: 20 Oct 2026
  * ===================================================================================================
  */
 
@@ -95,6 +95,7 @@ MTS_TEST(open_real_without_rtimu_fails)
 {
   mts::Hat_Config cfg = fast_config();
   cfg.mode = mts::Hat_Mode::real;
+  MTS_ASSERT(!mts::hat_real_available());
   MTS_ASSERT(open_quietly(cfg) == nullptr);
 }
 #endif
@@ -153,6 +154,7 @@ MTS_TEST(first_timestamp_is_now)
   MTS_ASSERT(hat->read_sample(s) == mts::Hat_Status::ok);
   MTS_ASSERT_GE(s.t_ns, before);
   MTS_ASSERT_LT(s.t_ns - before, MTS_TIME_NS_PER_S);
+
   // The protocol's origin: sample 0 is stamped exactly at the opening
   MTS_ASSERT_EQ(hat->info().opened_t_ns, s.t_ns);
 }
@@ -254,16 +256,17 @@ MTS_TEST(statistics_match_config)
   }
 }
 
-// Amplitude of the component at freq_hz in accel x: one-bin DFT
-static double amplitude_at(const std::vector<Raw_Sample>& s, double rate, double freq_hz)
+// Amplitude of the component at freq_hz in accel x (or gyro z): one-bin DFT
+static double amplitude_at(const std::vector<Raw_Sample>& s, double rate, double freq_hz, bool gyro_z = false)
 {
   double re = 0.0;
   double im = 0.0;
   for (size_t n = 0; n < s.size(); n++)
   {
     double phase = TWO_PI * freq_hz * static_cast<double>(n) / rate;
-    re += s[n].accel[0] * std::cos(phase);
-    im -= s[n].accel[0] * std::sin(phase);
+    const double x = gyro_z ? s[n].gyro[2] : s[n].accel[0];
+    re += x * std::cos(phase);
+    im -= x * std::sin(phase);
   }
   return 2.0 * std::sqrt(re * re + im * im) / static_cast<double>(s.size());
 }
@@ -282,6 +285,10 @@ MTS_TEST(tremor_is_where_configured)
   MTS_ASSERT_NEAR(amplitude_at(s, cfg.sample_rate_hz, cfg.sim.tremor_hz), cfg.sim.tremor_amp_ms2, 2e-3);
   // Doubles: MTS_ASSERT_LT would compare them as long long (0 < 0)
   MTS_ASSERT(amplitude_at(s, cfg.sample_rate_hz, 9.0) < 2e-3);
+
+  // Rotational tremor: gyro z, same frequency (noise floor per bin ~ 0.002 * sqrt(2 / N) = 3e-5)
+  MTS_ASSERT_NEAR(amplitude_at(s, cfg.sample_rate_hz, cfg.sim.tremor_hz, true), cfg.sim.tremor_rot_rads, 2e-4);
+  MTS_ASSERT(amplitude_at(s, cfg.sample_rate_hz, 9.0, true) < 2e-4);
 }
 
 MTS_TEST(same_seed_same_data)
@@ -395,4 +402,3 @@ static const Mts_Test tests[] = {
 };
 
 MTS_TEST_MAIN(tests)
-

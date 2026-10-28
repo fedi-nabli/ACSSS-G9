@@ -63,7 +63,7 @@ export type FrameMessage = {
   tremor_amplitude_mm: number
   tremor_confidence: number
   pipeline_delay_ms: number
-  counter_signal_mm: Vec3 | null
+  counter_signal: Imu6
   imu?: ImuReading;
   predictions: Prediction[];
 };

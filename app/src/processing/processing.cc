@@ -33,6 +33,8 @@ Processing_Core::Processing_Core(double rate_hz)
   , fusion_(nullptr)
   , separation_(nullptr)
   , detect_(nullptr)
+  , separation_rot_(nullptr)
+  , detect_rot_(nullptr)
   , cfg_gen_(0)
   , horizon_(0)
   , active_(PREDICTOR_COUNT)
@@ -47,6 +49,15 @@ Processing_Core::Processing_Core(double rate_hz)
   fusion_ = fusion_create(&fc);
   separation_ = separation_create(&sc);
   detect_ = detect_create(&dc);
+
+  // Rotation: the same band, one integration (rad/s -> rad), and an
+  // amplitude floor in rad: 1 mrad (0.06 deg), physiological tremor is about that
+  Separation_Config sr = sc;
+  sr.integrations = 1;
+  Detect_Config dr = dc;
+  dr.min_amp = ROTATION_MIN_AMP_RAD;
+  separation_rot_ = separation_create(&sr);
+  detect_rot_ = detect_create(&dr);
 }
 
 Processing_Core::~Processing_Core()
@@ -54,11 +65,13 @@ Processing_Core::~Processing_Core()
   fusion_destroy(fusion_);
   separation_destroy(separation_);
   detect_destroy(detect_);
+  separation_destroy(separation_rot_);
+  detect_destroy(detect_rot_);
 }
 
 bool Processing_Core::valid() const
 {
-  return fusion_ && separation_ && detect_;
+  return fusion_ && separation_ && detect_ && separation_rot_ && detect_rot_;
 }
 
 uint32_t Processing_Core::horizon_steps() const
@@ -92,7 +105,7 @@ void Processing_Core::apply(const Pipeline_Control& ctl)
     slot.id = id;
     slot.ops = predictor_by_id(id);
     const Predictor_Config pc = predictor_config_default(id, rate_hz_, horizon_);
-    for (int a = 0; a < 3 && slot.ops; a++)
+    for (int a = 0; a < AXES && slot.ops; a++)
     {
       if (!slot.ops->init(slot.state[a], &pc))
       {
@@ -108,7 +121,7 @@ void Processing_Core::reset_predictors()
   for (uint32_t i = 0; i < n_slots_; i++)
   {
     Slot& slot = slots_[i];
-    for (int a = 0; a < 3 && slot.ops; a++)
+    for (int a = 0; a < AXES && slot.ops; a++)
     {
       slot.ops->reset(slot.state[a]);
     }
@@ -122,22 +135,28 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
   std::memset(&out, 0, sizeof(out));
   out.seq = raw.seq;
   out.t_ns = raw.t_ns;
+  for (int a = 0; a < 3; a++)
+  {
+    out.imu_acc.v[a] = raw.accel[a]; // as read: before calibration
+    out.imu_gyro.v[a] = raw.gyro[a];
+  }
 
-  // Stage 1
+  // Stage 1, translation: gravity removed by fusion, then band-pass and two integrations
   Raw_Sample s;
   calibration_apply(&cal_, &raw, &s);
-  // Copy calibrated IMU data into the output frame
-  for (int i = 0; i < 3; i++)
-  {
-    out.imu_acc.v[i] = s.accel[i];
-    out.imu_gyro.v[i] = s.gyro[i];
-}
   Fusion_Output fo;
   fusion_update(fusion_, &s, &fo);
   Separation_Output so;
   separation_update(separation_, &fo.lin_acc_body, &so);
   Detect_Output d;
   detect_update(detect_, &so, &d);
+
+  // Stage 1, rotation: the calibrated gyro, band-pass and one integration
+  const Vec3 gyro = { { s.gyro[0], s.gyro[1], s.gyro[2] } };
+  Separation_Output sr;
+  separation_update(separation_rot_, &gyro, &sr);
+  Detect_Output dr;
+  detect_update(detect_rot_, &sr, &dr);
 
   if (raw.flags & SAMPLE_GAP)
   {
@@ -148,12 +167,25 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
   {
     out.flags |= FRAME_TREMOR_ACTIVE;
   }
+  if (dr.active)
+  {
+    out.flags |= FRAME_ROTATION_ACTIVE;
+  }
   out.tremor_disp = so.tremor_disp;
   out.tremor_acc = so.tremor_acc;
-  out.orientation = fo.q;
   out.tremor_hz = d.hz;
   out.tremor_amp = d.amp;
   out.confidence = d.conf;
+  out.tremor_rot = sr.tremor_disp; // the angle
+  out.tremor_rot_rate = sr.tremor_acc; // the band-passed rate
+  out.rot_hz = dr.hz;
+  out.rot_amp = dr.amp;
+  out.rot_confidence = dr.conf;
+  out.orientation = fo.q;
+
+  // The 6 predictor inputs, and what each forecast is compared with
+  const double actual[AXES] = { so.tremor_disp.v[0], so.tremor_disp.v[1], so.tremor_disp.v[2],
+                                sr.tremor_disp.v[0], sr.tremor_disp.v[1], sr.tremor_disp.v[2] };
 
   // Predictors: update with this sample, then match forecasts to the present
   const uint32_t ring = K_MAX + 1;
@@ -169,7 +201,7 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
     p.predictor_id = slot.id;
     if (!slot.ops)
     {
-      continue; // flags 0: forecast and residual null
+      continue; // flags 0: forecasts and residuals null
     }
 
     // The forecast made h samples ago for this instant
@@ -179,11 +211,18 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
       for (int a = 0; a < 3; a++)
       {
         p.forecast.v[a] = slot.made[then_slot][a];
-        p.residual.v[a] = so.tremor_disp.v[a] - p.forecast.v[a];
+        p.residual.v[a] = actual[a] - p.forecast.v[a];
+        p.forecast_rot.v[a] = slot.made[then_slot][3 + a];
+        p.residual_rot.v[a] = actual[3 + a] - p.forecast_rot.v[a];
       }
+      // Each residual behind its own domain's gate
       if (d.active)
       {
         p.flags |= PRED_RESIDUAL_VALID;
+      }
+      if (dr.active)
+      {
+        p.flags |= PRED_RESIDUAL_ROT_VALID;
       }
     }
 
@@ -192,10 +231,10 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
      * on an axis without tremor) forecasts 0: no motion to cancel there.
      * The forecast exists once at least one axis has one */
     bool made = false;
-    for (int a = 0; a < 3; a++)
+    for (int a = 0; a < AXES; a++)
     {
       double ahead[K_MAX];
-      slot.ops->update(slot.state[a], so.tremor_disp.v[a]);
+      slot.ops->update(slot.state[a], actual[a]);
       const size_t k = slot.ops->predict(slot.state[a], ahead, horizon_);
       const bool axis = k >= horizon_;
       slot.made[now_slot][a] = axis ? ahead[horizon_ - 1] : 0.0;
@@ -206,12 +245,20 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
     if (slot.id == active_)
     {
       predictor_delay = slot.ops->delay_ns(slot.state[0]);
-      if ((p.flags & PRED_FORECAST_VALID) && d.active)
+      if (p.flags & PRED_FORECAST_VALID)
       {
-        out.flags |= FRAME_COUNTER_VALID;
         for (int a = 0; a < 3; a++)
         {
           out.counter.v[a] = -p.forecast.v[a];
+          out.counter_rot.v[a] = -p.forecast_rot.v[a];
+        }
+        if (d.active)
+        {
+          out.flags |= FRAME_COUNTER_VALID;
+        }
+        if (dr.active)
+        {
+          out.flags |= FRAME_COUNTER_ROT_VALID;
         }
       }
     }
@@ -219,8 +266,10 @@ void Processing_Core::process(const Raw_Sample& raw, int64_t now_ns, Output_Fram
   out.n_predictions = n_slots_;
   since_reset_++;
 
-  // Causal delay of everything: the filters' group delay, the predictor's, and the time spent getting here
-  out.pipeline_delay_ns = fo.delay_ns + so.delay_ns + predictor_delay + (now_ns - raw.t_ns);
+  // Causal delay: the slower chain's filters (translation: one integration more), the
+  // predictor's, and the time spent getting here
+  const int64_t stage1 = fo.delay_ns + so.delay_ns > sr.delay_ns ? fo.delay_ns + so.delay_ns : sr.delay_ns;
+  out.pipeline_delay_ns = stage1 + predictor_delay + (now_ns - raw.t_ns);
 }
 
 /* ---------------------------------------------------------------------------------------------------

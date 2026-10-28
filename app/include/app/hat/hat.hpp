@@ -21,7 +21,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 21 Oct 2026
+ * Last Modified: 20 Oct 2026
  * ===================================================================================================
  */
 
@@ -30,6 +30,7 @@
 
 #include <app/link/led_command.h>
 #include <core/types/raw_sample.h>
+#include <core/types/units.h>
 
 #include <cstdint>
 #include <memory>
@@ -38,7 +39,7 @@ namespace mts
 {
 
 // Unit conversions shared by both implementations
-constexpr double STANDARD_GRAVITY_MS2 = 9.80665;
+constexpr double STANDARD_GRAVITY_MS2 = MTS_STANDARD_GRAVITY_MS2;
 constexpr double DEG_TO_RAD = 3.14159265358979323846 / 180.0;
 
 // Highest sample rate hat_open accepts (the LSM9DS1 tops out around 952 Hz)
@@ -64,6 +65,7 @@ struct Hat_Sim_Params
   uint64_t seed = 1; // same seed, same data
   double tremor_hz = 6.0; // frequency of the tremor sinusoid on accel
   double tremor_amp_ms2 = 0.5; // its amplitude
+  double tremor_rot_rads = 0.3; // rotational tremor on gyro z, same frequency, peak rad/s (8 mrad of angle at 6 Hz)
   double accel_noise_ms2 = 0.02; // standard deviation, per axis
   double gyro_noise_rads = 0.002;
   double mag_noise_ut = 0.3;
@@ -87,7 +89,7 @@ struct Hat_Info
   double rate_hz; // measured actual rate (Hat_Sim: exactly the requested one)
   double accel_range_ms2;
   double gyro_range_rads;
-  int64_t opened_t_ns;
+  int64_t opened_t_ns; // when the Hat opened (CLOCK_MONOTONIC): the protocol's timestamp origin
 };
 
 class Hat
@@ -128,9 +130,10 @@ inline bool hat_gyro_range_supported(uint32_t dps)
  *  - mode is real but the build has no RTIMULib (MTS_WITH_RTIMU off)
  *  - the hardware cannot be opened */
 std::unique_ptr<Hat> hat_open(const Hat_Config& cfg);
+
+// true in builds with Hat_Real (MTS_WITH_RTIMU, ./build.sh --hat): Hat_Mode::real can be opened
 bool hat_real_available();
 
 } // namespace mts
 
 #endif /* MTS_APP_HAT_HAT_HPP */
-

@@ -15,7 +15,7 @@
  * whole pipeline (filters, horizon in samples, status) runs at the rate
  * the samples really arrive at.
  *
- * Authors: Chad Davis, Fedi Nabli
+ * Authors: Fedi Nabli
  * Date: 22 Oct 2026
  * Last Modified: 22 Oct 2026
  * ===================================================================================================
@@ -54,6 +54,7 @@ private:
   int64_t opened_t_ns_; // the protocol's timestamp origin
   uint64_t seq_;
   int64_t last_t_ns_; // 0 before the first sample
+  int64_t first_t_ns_; // for the one-time measured-rate log
   float last_mag_[3];
   Led_Command led_;
 };

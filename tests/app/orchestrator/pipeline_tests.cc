@@ -162,6 +162,7 @@ MTS_TEST(ui_session_from_boot_to_stop)
   long long prev_seq = -1;
   long long prev_t = -1;
   int with_counter = 0;
+  int with_rotation_counter = 0;
   const int64_t frames_deadline = mts_time_now_ns() + 8 * MTS_TIME_NS_PER_S; // 300 frames take 3 s
   for (int n = 0; n < 300;)
   {
@@ -193,13 +194,22 @@ MTS_TEST(ui_session_from_boot_to_stop)
     if (!wflc_forecasts)
     {
       MTS_ASSERT(has(line, "\"counter_signal_mm\":null"));
+      MTS_ASSERT(has(line, "\"counter_rotation_mrad\":null"));
     }
+    // Rotation, gated by its own detector (Hat_Sim turns the board about z)
+    if (wflc_forecasts && has(line, "\"rotation_active\":true"))
+    {
+      MTS_ASSERT(!has(line, "\"counter_rotation_mrad\":null"));
+      with_rotation_counter++;
+    }
+    MTS_ASSERT(has(line, "\"imu\":{\"ax_g\":"));
     prev_seq = seq;
     prev_t = t;
     n++;
   }
   // Within the 3 s, the detector turned on and wflc locked
   MTS_ASSERT_GT(with_counter, 100);
+  MTS_ASSERT_GT(with_rotation_counter, 100);
 
   // setup while running: acked, shows in status, frames follow the new set
   MTS_ASSERT(ui.send_text("{\"type\":\"command\",\"id\":4,\"command\":\"setup\",\"enabled_predictor_ids\":[\"wflc\"],"

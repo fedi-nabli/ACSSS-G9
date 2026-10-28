@@ -17,6 +17,7 @@
 #include <mts_test.h>
 #include <app/protocol/json.hpp>
 #include <app/protocol/protocol.hpp>
+#include <core/types/units.h>
 
 #include <cmath>
 #include <cstring>
@@ -133,7 +134,21 @@ Server_Message sample_frame()
   f.predictions[0].forecast = { { 0.0003, -0.00005, 0.00004 } };
   f.predictions[0].residual = { { 0.00031, -0.00005, 0.00003 } };
   f.predictions[1].predictor_id = PREDICTOR_WFLC;
-  f.predictions[1].flags = 0; // warm-up: both null
+  f.predictions[1].flags = 0; // warm-up: all null
+
+  // Rotation (rad), and the sensor as read (m/s^2, rad/s)
+  f.flags |= FRAME_ROTATION_ACTIVE | FRAME_COUNTER_ROT_VALID;
+  f.tremor_rot = { { 1.2e-3, -0.3e-3, 8.1e-3 } };
+  f.tremor_rot_rate = { { 0.05, -0.01, 0.30 } };
+  f.rot_hz = 6.1;
+  f.rot_amp = 8.2e-3;
+  f.rot_confidence = 0.91;
+  f.counter_rot = { { -1.1e-3, 0.3e-3, -7.9e-3 } };
+  f.imu_acc = { { 0.10 * MTS_STANDARD_GRAVITY_MS2, -0.02 * MTS_STANDARD_GRAVITY_MS2, 1.01 * MTS_STANDARD_GRAVITY_MS2 } };
+  f.imu_gyro = { { 0.060, -0.002, 0.310 } };
+  f.predictions[0].flags |= PRED_RESIDUAL_ROT_VALID;
+  f.predictions[0].forecast_rot = { { 0.6e-3, -0.1e-3, 4.0e-3 } };
+  f.predictions[0].residual_rot = { { 0.6e-3, -0.2e-3, 4.1e-3 } };
   return m;
 }
 
@@ -237,12 +252,69 @@ MTS_TEST(frame_keys_in_contract_order)
   MTS_ASSERT(parse_line(lines[0], v));
 
   const std::vector<std::string> expected = {
-    "type", "sequence", "timestamp_ns", "gap_before", "tremor_active", "tremor_displacement_mm",
-    "tremor_acceleration_ms2", "orientation_wxyz", "tremor_frequency_hz", "tremor_amplitude_mm",
-    "tremor_confidence", "pipeline_delay_ms", "counter_signal_mm", "predictions",
+    "type", "sequence", "timestamp_ns", "gap_before", "tremor_active", "rotation_active",
+    "tremor_displacement_mm", "tremor_acceleration_ms2", "tremor_rotation_mrad", "tremor_angular_rate_rad_s", "imu",
+    "orientation_wxyz", "tremor_frequency_hz", "tremor_amplitude_mm", "tremor_confidence", "rotation_frequency_hz",
+    "rotation_amplitude_mrad", "rotation_confidence", "pipeline_delay_ms", "counter_signal_mm", "counter_rotation_mrad",
+    "predictions",
   };
   MTS_ASSERT(keys_of(v) == expected);
+  const std::vector<std::string> imu = { "ax_g", "ay_g", "az_g", "gx_rad_s", "gy_rad_s", "gz_rad_s" };
+  MTS_ASSERT(keys_of(*v.find("imu")) == imu);
 }
+
+MTS_TEST(frame_rotation_and_imu_units)
+{
+  mts::Protocol_Encoder enc;
+  std::string out;
+  enc.encode(sample_frame(), out);
+  mts::Json_Value v;
+  MTS_ASSERT(parse_line(lines_of(out)[0], v));
+
+  // rad -> mrad, rad/s unchanged
+  MTS_ASSERT(v.find("rotation_active")->boolean);
+  MTS_ASSERT(vec3_is(v, "tremor_rotation_mrad", 1.2, -0.3, 8.1));
+  MTS_ASSERT(vec3_is(v, "tremor_angular_rate_rad_s", 0.05, -0.01, 0.30));
+  MTS_ASSERT_NEAR(num(v, "rotation_frequency_hz"), 6.1, 1e-9);
+  MTS_ASSERT_NEAR(num(v, "rotation_amplitude_mrad"), 8.2, 1e-9);
+  MTS_ASSERT_NEAR(num(v, "rotation_confidence"), 0.91, 1e-9);
+  MTS_ASSERT(vec3_is(v, "counter_rotation_mrad", -1.1, 0.3, -7.9));
+
+  // m/s^2 -> g with the one shared constant, rad/s unchanged
+  const mts::Json_Value& imu = *v.find("imu");
+  MTS_ASSERT_NEAR(num(imu, "ax_g"), 0.10, 1e-6);
+  MTS_ASSERT_NEAR(num(imu, "az_g"), 1.01, 1e-6);
+  MTS_ASSERT_NEAR(num(imu, "gz_rad_s"), 0.310, 1e-9);
+
+  // Rotation forecast and residual next to the translation ones; wflc in warm-up: all null
+  const mts::Json_Value& inv = v.find("predictions")->array[0];
+  MTS_ASSERT(vec3_is(inv, "forecast_rotation_mrad", 0.6, -0.1, 4.0));
+  MTS_ASSERT(vec3_is(inv, "residual_rotation_mrad", 0.6, -0.2, 4.1));
+  const mts::Json_Value& wflc = v.find("predictions")->array[1];
+  MTS_ASSERT(is_null(wflc, "forecast_rotation_mrad"));
+  MTS_ASSERT(is_null(wflc, "residual_rotation_mrad"));
+}
+
+MTS_TEST(rotation_gate_is_its_own)
+{
+  // Rotation active, translation not: rotation residual and counter out, translation ones null
+  Server_Message m = sample_frame();
+  m.frame.flags = FRAME_ROTATION_ACTIVE | FRAME_COUNTER_ROT_VALID;
+  m.frame.predictions[0].flags = PRED_FORECAST_VALID | PRED_RESIDUAL_ROT_VALID;
+  mts::Protocol_Encoder enc;
+  std::string out;
+  enc.encode(m, out);
+  mts::Json_Value v;
+  MTS_ASSERT(parse_line(lines_of(out)[0], v));
+  MTS_ASSERT(!v.find("tremor_active")->boolean);
+  MTS_ASSERT(is_null(v, "counter_signal_mm"));
+  MTS_ASSERT(!is_null(v, "counter_rotation_mrad"));
+  const mts::Json_Value& inv = v.find("predictions")->array[0];
+  MTS_ASSERT(is_null(inv, "residual_mm"));
+  MTS_ASSERT(!is_null(inv, "residual_rotation_mrad"));
+  MTS_ASSERT(!is_null(inv, "forecast_mm")); // forecasts: one flag for all 6 axes
+}
+
 
 MTS_TEST(frame_values_and_units)
 {
@@ -285,7 +357,8 @@ MTS_TEST(frame_predictions)
   MTS_ASSERT(preds != nullptr && preds->array.size() == 2);
 
   const mts::Json_Value& inv = preds->array[0];
-  const std::vector<std::string> keys = { "predictor_id", "forecast_mm", "residual_mm" };
+  const std::vector<std::string> keys = { "predictor_id", "forecast_mm", "residual_mm", "forecast_rotation_mrad",
+                                          "residual_rotation_mrad" };
   MTS_ASSERT(keys_of(inv) == keys);
   MTS_ASSERT(inv.find("predictor_id")->string == "inversion");
   MTS_ASSERT(vec3_is(inv, "forecast_mm", 0.3, -0.05, 0.04));
@@ -645,7 +718,7 @@ const char* const CONTRACT_EXAMPLE[] = {
   "{\"type\":\"command\",\"id\":2,\"command\":\"calibrate\"}",
   "{\"type\":\"ack\",\"id\":2}",
   "{\"type\":\"status\",\"protocol_version\":1,\"state\":\"calibrating\",\"sample_rate_hz\":100,\"horizon_ms\":30,\"calibration\":{\"step\":\"hold_still\",\"progress\":0.4},\"calibration_age_s\":null,\"enabled_predictor_ids\":[\"inversion\",\"wflc\"],\"active_predictor_id\":\"wflc\",\"metrics_hz\":2,\"spectrum_hz\":5,\"drops\":{\"hat_to_processing\":0,\"processing_to_prediction\":0,\"processing_to_server\":0}}",
-  "{\"type\":\"frame\",\"sequence\":4201,\"timestamp_ns\":42010000000,\"gap_before\":false,\"tremor_active\":true,\"tremor_displacement_mm\":[0.61,-0.10,0.07],\"tremor_acceleration_ms2\":[0.87,-0.14,0.10],\"orientation_wxyz\":[0.998,0.03,-0.05,0.01],\"tremor_frequency_hz\":6.1,\"tremor_amplitude_mm\":0.8,\"tremor_confidence\":0.93,\"pipeline_delay_ms\":42,\"counter_signal_mm\":[-0.55,0.12,-0.08],\"predictions\":[{\"predictor_id\":\"inversion\",\"forecast_mm\":[0.30,-0.05,0.04],\"residual_mm\":[0.31,-0.05,0.03]},{\"predictor_id\":\"wflc\",\"forecast_mm\":[0.55,-0.12,0.08],\"residual_mm\":[0.06,0.02,-0.01]}]}",
+  "{\"type\":\"frame\",\"sequence\":4201,\"timestamp_ns\":42010000000,\"gap_before\":false,\"tremor_active\":true,\"rotation_active\":true,\"tremor_displacement_mm\":[0.61,-0.10,0.07],\"tremor_acceleration_ms2\":[0.87,-0.14,0.10],\"tremor_rotation_mrad\":[1.2,-0.3,8.1],\"tremor_angular_rate_rad_s\":[0.05,-0.01,0.30],\"imu\":{\"ax_g\":0.10,\"ay_g\":-0.02,\"az_g\":1.01,\"gx_rad_s\":0.060,\"gy_rad_s\":-0.002,\"gz_rad_s\":0.310},\"orientation_wxyz\":[0.998,0.03,-0.05,0.01],\"tremor_frequency_hz\":6.1,\"tremor_amplitude_mm\":0.8,\"tremor_confidence\":0.93,\"rotation_frequency_hz\":6.1,\"rotation_amplitude_mrad\":8.2,\"rotation_confidence\":0.91,\"pipeline_delay_ms\":42,\"counter_signal_mm\":[-0.55,0.12,-0.08],\"counter_rotation_mrad\":[-1.1,0.3,-7.9],\"predictions\":[{\"predictor_id\":\"inversion\",\"forecast_mm\":[0.30,-0.05,0.04],\"residual_mm\":[0.31,-0.05,0.03],\"forecast_rotation_mrad\":[0.6,-0.1,4.0],\"residual_rotation_mrad\":[0.6,-0.2,4.1]},{\"predictor_id\":\"wflc\",\"forecast_mm\":[0.55,-0.12,0.08],\"residual_mm\":[0.06,0.02,-0.01],\"forecast_rotation_mrad\":[1.1,-0.3,7.9],\"residual_rotation_mrad\":[0.1,0.0,0.2]}]}",
   "{\"type\":\"metrics\",\"predictor_id\":\"wflc\",\"timestamp_ns\":42500000000,\"suppression_ratio\":0.18,\"residual_rms_mm\":0.09,\"window_ms\":2000}",
   "{\"type\":\"spectrum\",\"timestamp_ns\":42500000000,\"bin_width_hz\":0.39,\"x_ms2\":[0.01,0.02,0.01,0.40,0.85],\"y_ms2\":[0.00,0.01,0.01,0.06,0.14],\"z_ms2\":[0.00,0.01,0.00,0.04,0.09]}",
 };
@@ -739,6 +812,8 @@ static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(frame_keys_in_contract_order),
   MTS_TEST_ENTRY(frame_values_and_units),
   MTS_TEST_ENTRY(frame_predictions),
+  MTS_TEST_ENTRY(frame_rotation_and_imu_units),
+  MTS_TEST_ENTRY(rotation_gate_is_its_own),
   MTS_TEST_ENTRY(frame_nulls_and_flags),
   MTS_TEST_ENTRY(frame_skips_unknown_predictor_and_caps_count),
   MTS_TEST_ENTRY(metrics_one_line_per_predictor),

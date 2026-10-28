@@ -24,13 +24,15 @@
 
 #include <core/fusion/fusion.h>
 
+#include <core/types/units.h>
+
 #include <utils/logger/logger.h>
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
-static const double G = 9.80665; // standard gravity, m/s^2
+static const double G = MTS_STANDARD_GRAVITY_MS2;
 
 struct Fusion
 {

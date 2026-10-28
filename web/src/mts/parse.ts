@@ -194,6 +194,7 @@ function asPrediction(value: unknown): Prediction | undefined {
 }
 
 function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+  console.error(raw)
   const sequence = asNumber(raw.sequence)
   const timestamp_ns = asNumber(raw.timestamp_ns)
   const gap_before = asBool(raw.gap_before)
@@ -213,6 +214,11 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     return undefined;
   }
   const counter_signal_mm = asVec3OrNull(raw.counter_signal_mm)
+  const counter_signal_rad = asVec3OrNull(raw.counter_rotation_mrad)
+  console.error(counter_signal_mm)
+  console.error(counter_signal_rad)
+  const counter_signal = asImu6({ 'ax_g': counter_signal_mm![0], 'ay_g': counter_signal_mm![1], 'az_g': counter_signal_mm![2], 'gx_rad_s': counter_signal_rad![0], 'gy_rad_s': counter_signal_rad![1], 'gz_rad_s': counter_signal_rad![2] });
+  console.error(counter_signal)
   if (
     sequence === undefined ||
     timestamp_ns === undefined ||
@@ -227,6 +233,8 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     tremor_confidence === undefined ||
     pipeline_delay_ms === undefined ||
     counter_signal_mm === undefined ||
+    counter_signal_rad === undefined ||
+    counter_signal === undefined ||
     !Array.isArray(raw.predictions)
   ) {
     return undefined
@@ -258,7 +266,7 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     tremor_amplitude_mm,
     tremor_confidence,
     pipeline_delay_ms,
-    counter_signal_mm,
+    counter_signal,
     predictions,
   }
 }

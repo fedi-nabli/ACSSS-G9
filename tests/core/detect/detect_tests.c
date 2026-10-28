@@ -79,7 +79,7 @@ MTS_TEST(create_rejects_bad_configs)
   c = good, c.off_threshold = c.on_threshold, refused += detect_create(&c) == NULL; // no hysteresis
   c = good, c.on_threshold = 1.5, refused += detect_create(&c) == NULL;
   c = good, c.window_s = 0.0, refused += detect_create(&c) == NULL;
-  c = good, c.min_amp_m = -1.0, refused += detect_create(&c) == NULL;
+  c = good, c.min_amp = -1.0, refused += detect_create(&c) == NULL;
   c = good, c.rate_hz = 0.0, refused += detect_create(&c) == NULL;
   loud();
   MTS_ASSERT_EQ(refused, 5);

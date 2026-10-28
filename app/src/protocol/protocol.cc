@@ -1,6 +1,8 @@
 /* ===================================================================================================
  * app/src/protocol/protocol.cc
  *
+ * UI protocol v1, see app/protocol/protocol.hpp and docs/ui_contract.md
+ *
  * Authors: Fedi Nabli
  * Date: 22 Oct 2026
  * Last Modified: 22 Oct 2026
@@ -9,6 +11,8 @@
 
 #include <app/protocol/json.hpp>
 #include <app/protocol/protocol.hpp>
+
+#include <core/types/units.h>
 
 #include <cmath>
 #include <cstdarg>
@@ -22,7 +26,9 @@ namespace
 {
 
 constexpr double M_TO_MM = 1000.0;
+constexpr double RAD_TO_MRAD = 1000.0;
 constexpr double NS_TO_MS = 1e-6;
+constexpr double MS2_TO_G = 1.0 / MTS_STANDARD_GRAVITY_MS2;
 
 /* ---------------------------------------------------------------------------------------------------
  * JSON writing
@@ -342,32 +348,32 @@ void Protocol_Encoder::encode_frame(const Output_Frame& f, std::string& out) con
   append_bool(out, (f.flags & FRAME_GAP_BEFORE) != 0);
   append_key(out, "tremor_active");
   append_bool(out, (f.flags & FRAME_TREMOR_ACTIVE) != 0);
+  append_key(out, "rotation_active");
+  append_bool(out, (f.flags & FRAME_ROTATION_ACTIVE) != 0);
+
   append_key(out, "tremor_displacement_mm");
   append_vec3(out, f.tremor_disp, M_TO_MM);
   append_key(out, "tremor_acceleration_ms2");
   append_vec3(out, f.tremor_acc, 1.0);
+  append_key(out, "tremor_rotation_mrad");
+  append_vec3(out, f.tremor_rot, RAD_TO_MRAD);
+  append_key(out, "tremor_angular_rate_rad_s");
+  append_vec3(out, f.tremor_rot_rate, 1.0);
 
-
-  // Raw IMU data
+  // The sensor as read, before calibration: accel in g, gyro in rad/s
   append_key(out, "imu");
   out += "{\"ax_g\":";
-  append_number(out, f.imu_acc.v[0] / 9.80665);
-
+  append_number(out, f.imu_acc.v[0] * MS2_TO_G);
   append_key(out, "ay_g");
-  append_number(out, f.imu_acc.v[1] / 9.80665);
-
+  append_number(out, f.imu_acc.v[1] * MS2_TO_G);
   append_key(out, "az_g");
-  append_number(out, f.imu_acc.v[2] / 9.80665);
-
+  append_number(out, f.imu_acc.v[2] * MS2_TO_G);
   append_key(out, "gx_rad_s");
   append_number(out, f.imu_gyro.v[0]);
-
   append_key(out, "gy_rad_s");
   append_number(out, f.imu_gyro.v[1]);
-
   append_key(out, "gz_rad_s");
   append_number(out, f.imu_gyro.v[2]);
-
   out.push_back('}');
 
   append_key(out, "orientation_wxyz");
@@ -388,10 +394,18 @@ void Protocol_Encoder::encode_frame(const Output_Frame& f, std::string& out) con
   append_number(out, f.tremor_amp * M_TO_MM);
   append_key(out, "tremor_confidence");
   append_number(out, f.confidence);
+  append_key(out, "rotation_frequency_hz");
+  append_number(out, f.rot_hz);
+  append_key(out, "rotation_amplitude_mrad");
+  append_number(out, f.rot_amp * RAD_TO_MRAD);
+  append_key(out, "rotation_confidence");
+  append_number(out, f.rot_confidence);
   append_key(out, "pipeline_delay_ms");
   append_number(out, (double)f.pipeline_delay_ns * NS_TO_MS);
   append_key(out, "counter_signal_mm");
   append_vec3_or_null(out, f.counter, M_TO_MM, (f.flags & FRAME_COUNTER_VALID) != 0);
+  append_key(out, "counter_rotation_mrad");
+  append_vec3_or_null(out, f.counter_rot, RAD_TO_MRAD, (f.flags & FRAME_COUNTER_ROT_VALID) != 0);
 
   append_key(out, "predictions");
   out.push_back('[');
@@ -410,12 +424,17 @@ void Protocol_Encoder::encode_frame(const Output_Frame& f, std::string& out) con
     }
     first = false;
 
+    const bool forecast = (p.flags & PRED_FORECAST_VALID) != 0;
     out += "{\"predictor_id\":";
     append_predictor(out, p.predictor_id);
     append_key(out, "forecast_mm");
-    append_vec3_or_null(out, p.forecast, M_TO_MM, (p.flags & PRED_FORECAST_VALID) != 0);
+    append_vec3_or_null(out, p.forecast, M_TO_MM, forecast);
     append_key(out, "residual_mm");
     append_vec3_or_null(out, p.residual, M_TO_MM, (p.flags & PRED_RESIDUAL_VALID) != 0);
+    append_key(out, "forecast_rotation_mrad");
+    append_vec3_or_null(out, p.forecast_rot, RAD_TO_MRAD, forecast);
+    append_key(out, "residual_rotation_mrad");
+    append_vec3_or_null(out, p.residual_rot, RAD_TO_MRAD, (p.flags & PRED_RESIDUAL_ROT_VALID) != 0);
     out.push_back('}');
   }
   out.push_back(']');

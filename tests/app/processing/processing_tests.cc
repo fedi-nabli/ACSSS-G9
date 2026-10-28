@@ -43,11 +43,15 @@ void loud()
   mts_log_set_stream(nullptr);
 }
 
-std::unique_ptr<mts::Hat> sim()
+const double ROTATION_MRAD = 0.3 / (2.0 * PI * 6.0) * 1e3; // Hat_Sim's rotational tremor, as an angle
+
+std::unique_ptr<mts::Hat> sim(double tremor_ms2 = 0.5, double tremor_rot_rads = 0.3)
 {
   mts::Hat_Config cfg;
   cfg.sample_rate_hz = RATE;
   cfg.sim.paced = false;
+  cfg.sim.tremor_amp_ms2 = tremor_ms2;
+  cfg.sim.tremor_rot_rads = tremor_rot_rads;
   quiet();
   std::unique_ptr<mts::Hat> hat = mts::hat_open(cfg);
   loud();
@@ -138,6 +142,82 @@ MTS_TEST(stage_one_finds_the_tremor)
   MTS_ASSERT_GT(last.pipeline_delay_ns, 5 * MTS_TIME_NS_PER_MS);
 }
 
+MTS_TEST(rotation_chain_finds_the_rotational_tremor)
+{
+  // Hat_Sim turns the board back and forth about z: 0.3 rad/s at 6 Hz, 8 mrad
+  mts::Processing_Core core(RATE);
+  core.apply(control(1, INV, PREDICTOR_INVERSION, 30));
+  std::unique_ptr<mts::Hat> hat = sim();
+  const std::vector<Output_Frame> f = run(core, *hat, 400);
+
+  double peak[3] = { 0.0, 0.0, 0.0 };
+  for (size_t i = 300; i < 400; i++)
+  {
+    MTS_ASSERT_NE(f[i].flags & FRAME_ROTATION_ACTIVE, 0);
+    for (int a = 0; a < 3; a++)
+    {
+      peak[a] = std::fabs(f[i].tremor_rot.v[a]) > peak[a] ? std::fabs(f[i].tremor_rot.v[a]) : peak[a];
+    }
+  }
+  const Output_Frame& last = f.back();
+  MTS_ASSERT_NEAR(last.rot_hz, 6.0, 0.1);
+  MTS_ASSERT_NEAR(last.rot_amp * 1e3, ROTATION_MRAD, 0.1 * ROTATION_MRAD);
+  MTS_ASSERT_NEAR(peak[2] * 1e3, ROTATION_MRAD, 0.1 * ROTATION_MRAD);
+  MTS_ASSERT(peak[0] < 0.1 * peak[2]); // x and y: noise only
+  MTS_ASSERT(peak[1] < 0.1 * peak[2]);
+  MTS_ASSERT(last.rot_confidence > 0.8);
+}
+
+MTS_TEST(the_two_chains_are_independent)
+{
+  // Translation only: rotation stays off. Rotation only: translation stays off
+  {
+    mts::Processing_Core core(RATE);
+    core.apply(control(1, INV, PREDICTOR_INVERSION, 30));
+    std::unique_ptr<mts::Hat> hat = sim(0.5, 0.0);
+    const std::vector<Output_Frame> f = run(core, *hat, 400);
+    MTS_ASSERT_NE(f.back().flags & FRAME_TREMOR_ACTIVE, 0);
+    for (const Output_Frame& x : f)
+    {
+      MTS_ASSERT_EQ(x.flags & (FRAME_ROTATION_ACTIVE | FRAME_COUNTER_ROT_VALID), 0);
+      MTS_ASSERT_EQ(x.predictions[0].flags & PRED_RESIDUAL_ROT_VALID, 0);
+    }
+  }
+  {
+    mts::Processing_Core core(RATE);
+    core.apply(control(1, INV, PREDICTOR_INVERSION, 30));
+    std::unique_ptr<mts::Hat> hat = sim(0.0, 0.3);
+    const std::vector<Output_Frame> f = run(core, *hat, 400);
+    MTS_ASSERT_NE(f.back().flags & FRAME_ROTATION_ACTIVE, 0);
+    MTS_ASSERT_NE(f.back().flags & FRAME_COUNTER_ROT_VALID, 0);
+    for (const Output_Frame& x : f)
+    {
+      MTS_ASSERT_EQ(x.flags & (FRAME_TREMOR_ACTIVE | FRAME_COUNTER_VALID), 0);
+      MTS_ASSERT_EQ(x.predictions[0].flags & PRED_RESIDUAL_VALID, 0);
+    }
+  }
+}
+
+MTS_TEST(imu_is_the_sensor_as_read)
+{
+  // Exactly the Raw_Sample's accel and gyro, before calibration
+  mts::Processing_Core core(RATE);
+  core.apply(control(1, INV, PREDICTOR_INVERSION, 30));
+  std::unique_ptr<mts::Hat> hat = sim();
+  for (int i = 0; i < 20; i++)
+  {
+    Raw_Sample s;
+    hat->read_sample(s);
+    Output_Frame f;
+    core.process(s, s.t_ns, f);
+    for (int a = 0; a < 3; a++)
+    {
+      MTS_ASSERT_NEAR(f.imu_acc.v[a], s.accel[a], 0.0);
+      MTS_ASSERT_NEAR(f.imu_gyro.v[a], s.gyro[a], 0.0);
+    }
+  }
+}
+
 /* ---------------------------------------------------------------------------------------------------
  * Processing_Core: predictors and the forecast rings
  * ------------------------------------------------------------------------------------------------- */
@@ -163,6 +243,7 @@ MTS_TEST(inversion_forecast_is_the_displacement_h_samples_ago)
     for (int a = 0; a < 3; a++)
     {
       MTS_ASSERT_NEAR(p.forecast.v[a], f[i - 3].tremor_disp.v[a], 0.0);
+      MTS_ASSERT_NEAR(p.forecast_rot.v[a], f[i - 3].tremor_rot.v[a], 0.0); // all 6 axes
     }
   }
 }
@@ -219,6 +300,19 @@ MTS_TEST(wflc_cancels_where_inversion_cannot)
   }
   // y and z carry no tremor: their WFLCs do not lock, they forecast 0
   MTS_ASSERT_NEAR(f.back().predictions[1].forecast.v[1], 0.0, 0.0);
+
+  // The same on the rotation axes: z carries the rotational tremor
+  double rot = 0.0, inv_rot = 0.0, wflc_rot = 0.0;
+  for (size_t i = 400; i < f.size(); i++)
+  {
+    MTS_ASSERT_NE(f[i].predictions[1].flags & PRED_RESIDUAL_ROT_VALID, 0);
+    rot += f[i].tremor_rot.v[2] * f[i].tremor_rot.v[2];
+    inv_rot += f[i].predictions[0].residual_rot.v[2] * f[i].predictions[0].residual_rot.v[2];
+    wflc_rot += f[i].predictions[1].residual_rot.v[2] * f[i].predictions[1].residual_rot.v[2];
+    MTS_ASSERT_NEAR(f[i].counter_rot.v[2], -f[i].predictions[1].forecast_rot.v[2], 0.0);
+  }
+  MTS_ASSERT(std::sqrt(inv_rot / rot) > 0.9);
+  MTS_ASSERT(std::sqrt(wflc_rot / rot) < 0.1);
   const double inv_ratio = std::sqrt(inv / tremor), wflc_ratio = std::sqrt(wflc / tremor);
   MTS_ASSERT(inv_ratio > 0.9); // measured: 1.07
   MTS_ASSERT(wflc_ratio < 0.1); // measured: 0.034
@@ -414,6 +508,9 @@ MTS_TEST(stop_is_quick_while_waiting_for_samples)
 
 static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(stage_one_finds_the_tremor),
+  MTS_TEST_ENTRY(rotation_chain_finds_the_rotational_tremor),
+  MTS_TEST_ENTRY(the_two_chains_are_independent),
+  MTS_TEST_ENTRY(imu_is_the_sensor_as_read),
   MTS_TEST_ENTRY(inversion_forecast_is_the_displacement_h_samples_ago),
   MTS_TEST_ENTRY(residual_and_counter_follow_the_tremor_gate),
   MTS_TEST_ENTRY(wflc_cancels_where_inversion_cannot),

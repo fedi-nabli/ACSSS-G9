@@ -90,8 +90,10 @@ MTS_TEST(create_rejects_bad_configs)
   c = good, c.filter_order = 3, refused += separation_create(&c) == NULL;
   c = good, c.estimator = SEPARATION_WFLC, refused += separation_create(&c) == NULL; // not in v0
   c = good, c.rate_hz = NAN, refused += separation_create(&c) == NULL;
+  c = good, c.integrations = 0, refused += separation_create(&c) == NULL;
+  c = good, c.integrations = 3, refused += separation_create(&c) == NULL;
   loud();
-  MTS_ASSERT_EQ(refused, 6);
+  MTS_ASSERT_EQ(refused, 8);
   separation_destroy(NULL);
 }
 
@@ -111,6 +113,39 @@ MTS_TEST(tremor_becomes_its_displacement)
     MTS_ASSERT_NEAR(peak, amp / (w * w), tol[k] * amp / (w * w));
     separation_destroy(s);
   }
+}
+
+MTS_TEST(one_integration_turns_angular_rate_into_angle)
+{
+  // The gyro chain: w(t) = W sin(2 pi f t) integrates to an angle of W / (2 pi f).
+  // 0.3 rad/s at 6 Hz (Hat_Sim's rotational tremor) is 8 mrad
+  const double rate_amp = 0.3;
+  const double freqs[] = { 6.0, sqrt(48.0), 8.0 };
+  const double tol[] = { 0.02, 0.005, 0.02 };
+  for (int k = 0; k < 3; k++)
+  {
+    Separation_Config c = separation_config_default(RATE);
+    c.integrations = 1;
+    Separation* s = separation_create(&c);
+    MTS_ASSERT(s != NULL);
+    const double w = 2.0 * PI * freqs[k];
+    const double peak = disp_peak(s, freqs[k], rate_amp, 1000);
+    MTS_ASSERT_NEAR(peak, rate_amp / w, tol[k] * rate_amp / w);
+    separation_destroy(s);
+  }
+
+  // A gyro bias (constant rate) leaves no angle behind: a plain integrator would turn it into a ramp
+  Separation_Config c = separation_config_default(RATE);
+  c.integrations = 1;
+  Separation* s = separation_create(&c);
+  Separation_Output out;
+  for (int i = 0; i < 100000; i++)
+  {
+    const Vec3 bias = { { 0.01, -0.02, 0.005 } };
+    separation_update(s, &bias, &out);
+  }
+  MTS_ASSERT(fabs(out.tremor_disp.v[0]) < 1e-12 && fabs(out.tremor_disp.v[1]) < 1e-12);
+  separation_destroy(s);
 }
 
 MTS_TEST(tremor_acceleration_passes_at_unit_gain)
@@ -227,6 +262,7 @@ MTS_TEST(reset_forgets_the_past)
 static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(create_rejects_bad_configs),
   MTS_TEST_ENTRY(tremor_becomes_its_displacement),
+  MTS_TEST_ENTRY(one_integration_turns_angular_rate_into_angle),
   MTS_TEST_ENTRY(tremor_acceleration_passes_at_unit_gain),
   MTS_TEST_ENTRY(voluntary_motion_and_buzz_are_rejected),
   MTS_TEST_ENTRY(nothing_drifts_over_hours),

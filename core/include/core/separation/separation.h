@@ -18,6 +18,9 @@
  *    high-pass's double zero at DC cancels the integrator's pole), so
  *    nothing can drift, over any length of run. Scaled so the double
  *    integration is exactly 1 / w^2 at the band centre
+ *  - integrations = 1 is the same chain with one integration, for the
+ *    gyro: tremor_acc then holds the band-passed angular rate (rad/s) and
+ *    tremor_disp its angle (rad, small angles about the body axes)
  *  - delay_ns    = the group delay of all that at the band centre
  * SEPARATION_WFLC is refused by create until it exists.
  *
@@ -51,6 +54,8 @@ typedef struct Separation_Config
   double band_hi_hz; // 12 Hz by default
   uint32_t filter_order;
   uint32_t estimator; // SEPARATION_*
+  uint32_t integrations; // 2: acceleration -> displacement (m), 1: angular rate -> angle (rad)
+  uint32_t pad;
 } Separation_Config;
 
 typedef struct Separation_Output
@@ -60,7 +65,7 @@ typedef struct Separation_Output
   int64_t delay_ns;
 } Separation_Output;
 
-// 4-12 Hz, order 2, SEPARATION_NEUTRAL
+// 4-12 Hz, order 2, SEPARATION_NEUTRAL, 2 integrations
 Separation_Config separation_config_default(double rate_hz);
 
 // NULL (and a logged error) on a bad config or out of memory
@@ -79,4 +84,3 @@ void separation_update(Separation* s, const Vec3* lin_acc_body, Separation_Outpu
 #endif
 
 #endif /* MTS_CORE_SEPARATION_SEPARATION_H */
-

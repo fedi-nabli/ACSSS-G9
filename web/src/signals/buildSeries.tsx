@@ -21,7 +21,8 @@ const forecast = last?.predictions
       time: f.timestamp_ns / 1e9,
       input: value,
       prediction: i === recent.length - 1 && forecast.length ? value : null,
-      counter: value === null ? null : -value,
+      // counter: value === null ? null : -value,
+      counter: f.counter_signal?.[axis] === null ? null : f.counter_signal[axis],
       result: value === null ? null : value - value
     };
   });

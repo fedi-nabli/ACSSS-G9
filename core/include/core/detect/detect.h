@@ -14,8 +14,10 @@
  *  - amp  = sqrt(2 * power): the peak of a sine of that power
  *  - conf = 1 - its WFLC's error_ratio: how much of the motion one
  *    oscillation explains (a narrow peak scores high, broadband motion low)
- *  - active turns on at conf >= on_threshold with amp >= min_amp_m, and off
- *    at conf < off_threshold or amp < min_amp_m / 2
+ *  - active turns on at conf >= on_threshold with amp >= min_amp, and off
+ *    at conf < off_threshold or amp < min_amp / 2
+ * Units: those of tremor_disp (m for translation, rad for rotation); amp
+ * comes out in them too.
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
@@ -41,7 +43,7 @@ typedef struct Detect_Config
   double rate_hz; // measured sample rate
   double on_threshold; // score above which tremor turns on
   double off_threshold; // score below which it turns off (< on_threshold: hysteresis)
-  double min_amp_m; // displacement amplitude below which it never turns on
+  double min_amp; // amplitude below which it never turns on, in tremor_disp's units (m, or rad)
   double window_s; // analysis window length
 } Detect_Config;
 
@@ -49,11 +51,11 @@ typedef struct Detect_Output
 {
   bool active;
   double hz; // dominant frequency
-  double amp; // m, displacement amplitude
+  double amp; // amplitude (peak), in tremor_disp's units
   double conf; // 0..1
 } Detect_Output;
 
-// on 0.6, off 0.4, 0.05 mm, 1 s window
+// on 0.6, off 0.4, 0.05 mm (min_amp for a displacement in m), 1 s window
 Detect_Config detect_config_default(double rate_hz);
 
 // NULL (and a logged error) on a bad config or out of memory

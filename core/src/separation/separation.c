@@ -43,6 +43,7 @@ Separation_Config separation_config_default(double rate_hz)
   c.band_hi_hz = 12.0;
   c.filter_order = 2;
   c.estimator = SEPARATION_NEUTRAL;
+  c.integrations = 2;
   return c;
 }
 
@@ -63,6 +64,12 @@ static bool integrator(Biquad* b, double fc_hz, double rate_hz)
 
 Separation* separation_create(const Separation_Config* cfg)
 {
+  if (cfg->integrations < 1 || cfg->integrations > 2)
+  {
+    MTS_LOG_ERROR("separation: %u integrations, must be 1 (rate -> angle) or 2 (acceleration -> displacement)",
+                  cfg->integrations);
+    return NULL;
+  }
   if (cfg->estimator != SEPARATION_NEUTRAL)
   {
     MTS_LOG_ERROR("separation: estimator %u not implemented (v0: SEPARATION_NEUTRAL only)", cfg->estimator);
@@ -89,9 +96,11 @@ Separation* separation_create(const Separation_Config* cfg)
     filter_chain_init(&s->integrate[a]);
     bool ok = filter_chain_add_highpass(&s->band[a], cfg->filter_order, cfg->band_lo_hz, cfg->rate_hz)
               && filter_chain_add_lowpass(&s->band[a], cfg->filter_order, cfg->band_hi_hz, cfg->rate_hz);
-    s->integrate[a].n = 2;
-    ok = ok && integrator(&s->integrate[a].s[0], 0.5 * cfg->band_lo_hz, cfg->rate_hz)
-         && integrator(&s->integrate[a].s[1], 0.5 * cfg->band_lo_hz, cfg->rate_hz);
+    s->integrate[a].n = cfg->integrations;
+    for (uint32_t k = 0; k < cfg->integrations; k++)
+    {
+      ok = ok && integrator(&s->integrate[a].s[k], 0.5 * cfg->band_lo_hz, cfg->rate_hz);
+    }
     if (!ok)
     {
       free(s);
@@ -105,11 +114,12 @@ Separation* separation_create(const Separation_Config* cfg)
   filter_chain_response(&s->band[0], centre, cfg->rate_hz, &g, &phase);
   s->gain = 1.0 / g;
   // The trapezoidal integrator reads a little low as f rises ((wT/2) / tan(wT/2): 3 % per
-  // integration at 7 Hz, 100 Hz) and the high-passes take a little more: corrected at the centre
+  // integration at 7 Hz, 100 Hz) and the high-passes take a little more: corrected at the
+  // centre, to exactly 1 / w per integration
   const double w_c = 2.0 * 3.14159265358979323846 * centre;
   double g_int;
   filter_chain_response(&s->integrate[0], centre, cfg->rate_hz, &g_int, &phase);
-  s->disp_gain = 1.0 / (g_int * w_c * w_c);
+  s->disp_gain = 1.0 / (g_int * (cfg->integrations == 2 ? w_c * w_c : w_c));
   const double delay_s = filter_chain_group_delay_s(&s->band[0], centre, cfg->rate_hz)
                          + filter_chain_group_delay_s(&s->integrate[0], centre, cfg->rate_hz);
   s->delay_ns = llround(delay_s * 1e9);

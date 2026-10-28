@@ -1,11 +1,15 @@
 /* ===================================================================================================
  * app/include/app/processing/processing.hpp
  *
- * Processing: samples in, frames out.
+ * Processing: samples in, frames out, in 6 DOF: two chains.
  *
- *   Raw_Sample -> calibration_apply -> fusion -> separation -> detect     (stage 1, core)
- *              -> the enabled predictors, per axis                        (core/predict)
+ *   Raw_Sample -> calibration_apply -> fusion -> separation (2 integrations) -> detect    translation, m
+ *                                   -> gyro   -> separation (1 integration)  -> detect    rotation, rad
+ *              -> the enabled predictors, per axis, on all 6 axes                       (core/predict)
  *              -> Output_Frame
+ *
+ * The rotation chain needs no fusion: the gyro has no gravity in it, and
+ * the band-pass removes its bias. Each chain has its own tremor gate.
  *
  * Processing_Core is that chain for one sample, without threads, so tests
  * drive it sample by sample. Processing is the thread around it:
@@ -21,8 +25,9 @@
  * sample's forecast_mm, and residual = displacement - forecast. A gap
  * (SAMPLE_GAP) or a new cfg_gen resets the predictors and the rings: across
  * a gap, "h samples later" is no longer h * 1/rate later. Predictors run
- * per axis: an axis whose predictor has no forecast (not locked, e.g. no
- * tremor on it) forecasts 0, and the frame has a forecast once any axis does.
+ * per axis (0-2 translation, 3-5 rotation): an axis whose predictor has no
+ * forecast (not locked, e.g. no tremor on it) forecasts 0, and the frame has
+ * a forecast once any of the 6 axes does.
  *
  * Calibration: the identity for now (calibration is simulated). The LED is
  * set off once at start.
@@ -65,6 +70,9 @@ namespace mts
 // The longest the thread waits for a sample before checking whether to stop
 constexpr int64_t PROCESSING_POLL_NS = 50 * MTS_TIME_NS_PER_MS;
 
+// Rotation tremor smaller than this (peak) never turns the rotation gate on: 1 mrad, 0.06 deg
+constexpr double ROTATION_MIN_AMP_RAD = 1e-3;
+
 class Processing_Core
 {
 public:
@@ -89,12 +97,15 @@ public:
   uint32_t horizon_steps() const;
 
 private:
+  // Predictor axes: 0-2 translation x y z, 3-5 rotation x y z
+  static constexpr int AXES = 6;
+
   struct Slot
   {
     Predictor_Id id;
     const Predictor_Ops* ops; // nullptr: no implementation yet (the entry still goes out, all null)
-    alignas(std::max_align_t) unsigned char state[3][PREDICTOR_STATE_MAX];
-    double made[K_MAX + 1][3]; // forecast made at sample n for n + h, at n % (K_MAX + 1)
+    alignas(std::max_align_t) unsigned char state[AXES][PREDICTOR_STATE_MAX];
+    double made[K_MAX + 1][AXES]; // forecast made at sample n for n + h, at n % (K_MAX + 1)
     bool made_valid[K_MAX + 1];
   };
 
@@ -103,8 +114,10 @@ private:
   double rate_hz_;
   Calibration cal_;
   Fusion* fusion_;
-  Separation* separation_;
+  Separation* separation_; // translation
   Detector* detect_;
+  Separation* separation_rot_; // rotation
+  Detector* detect_rot_;
 
   uint32_t cfg_gen_; // last applied, 0 = none
   uint32_t horizon_; // h, steps

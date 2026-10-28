@@ -35,7 +35,7 @@ Detect_Config detect_config_default(double rate_hz)
   c.rate_hz = rate_hz;
   c.on_threshold = 0.6;
   c.off_threshold = 0.4;
-  c.min_amp_m = 0.05e-3;
+  c.min_amp = 0.05e-3;
   c.window_s = 1.0;
   return c;
 }
@@ -43,12 +43,12 @@ Detect_Config detect_config_default(double rate_hz)
 Detector* detect_create(const Detect_Config* cfg)
 {
   if (!isfinite(cfg->rate_hz) || !(cfg->rate_hz > 0.0) || !isfinite(cfg->window_s) || !(cfg->window_s > 0.0)
-      || !isfinite(cfg->min_amp_m) || !(cfg->min_amp_m >= 0.0) || !isfinite(cfg->on_threshold)
+      || !isfinite(cfg->min_amp) || !(cfg->min_amp >= 0.0) || !isfinite(cfg->on_threshold)
       || !isfinite(cfg->off_threshold) || !(cfg->off_threshold < cfg->on_threshold) || cfg->on_threshold > 1.0
       || cfg->off_threshold < 0.0)
   {
     MTS_LOG_ERROR("detect: bad config (rate %g Hz, window %g s, thresholds on %g off %g, min amp %g m)",
-                  cfg->rate_hz, cfg->window_s, cfg->on_threshold, cfg->off_threshold, cfg->min_amp_m);
+                  cfg->rate_hz, cfg->window_s, cfg->on_threshold, cfg->off_threshold, cfg->min_amp);
     return NULL;
   }
   Detector* d = (Detector*)malloc(sizeof(Detector));
@@ -109,11 +109,11 @@ void detect_update(Detector* d, const Separation_Output* in, Detect_Output* out)
   double conf = 1.0 - wflc_error_ratio(&d->wflc[dominant]);
   conf = conf < 0.0 ? 0.0 : (conf > 1.0 ? 1.0 : conf);
 
-  if (!d->active && conf >= d->cfg.on_threshold && amp >= d->cfg.min_amp_m)
+  if (!d->active && conf >= d->cfg.on_threshold && amp >= d->cfg.min_amp)
   {
     d->active = true;
   }
-  else if (d->active && (conf < d->cfg.off_threshold || amp < 0.5 * d->cfg.min_amp_m))
+  else if (d->active && (conf < d->cfg.off_threshold || amp < 0.5 * d->cfg.min_amp))
   {
     d->active = false;
   }
