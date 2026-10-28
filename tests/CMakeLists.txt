@@ -3,7 +3,7 @@
 ##                            ##
 ## Authors: Fedi Nabli        ##
 ## Date: 17 Oct 2026          ##
-## Last Modified: 17 Oct 2026 ##
+## Last Modified: 28 Oct 2026 ##
 ################################
 
 # Only added when MTS_BUILD_TESTS is ON
@@ -16,6 +16,7 @@ add_subdirectory(utils/mailbox)
 
 # core
 add_subdirectory(core/types)
+add_subdirectory(core/onnx)
 
 
 # app

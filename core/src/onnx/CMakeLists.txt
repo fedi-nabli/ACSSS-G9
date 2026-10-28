@@ -9,6 +9,10 @@
 mts_add_module(core onnx
   SOURCES onnx_predictor.cc
   DEPS mts::core::types
-  PRIVATE_DEPS onnxruntime
+  PRIVATE_DEPS onnxruntime nlohmann_json::nlohmann_json
 )
 
+target_include_directories(mts_core_onnx
+  PUBLIC
+    "${onnxruntime_SOURCE_DIR}/include"
+)
