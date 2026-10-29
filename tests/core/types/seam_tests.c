@@ -9,7 +9,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 21 Oct 2026
  * ===================================================================================================
  */
 
@@ -62,6 +62,20 @@ MTS_TEST(predictor_ids_are_dense_and_distinct)
     MTS_ASSERT(!seen[ids[i]]);
     seen[ids[i]] = true;
   }
+}
+
+MTS_TEST(predictor_names_roundtrip)
+{
+  // One name per id, and the name leads back to the id
+  for (Predictor_Id id = 0; id < PREDICTOR_COUNT; id++)
+  {
+    const char* name = predictor_name(id);
+    MTS_ASSERT(name != NULL);
+    MTS_ASSERT_EQ(predictor_id_from_name(name), id);
+  }
+  MTS_ASSERT(strcmp(predictor_name(PREDICTOR_WFLC), "wflc") == 0);
+  MTS_ASSERT(predictor_name(PREDICTOR_COUNT) == NULL);
+  MTS_ASSERT_EQ(predictor_id_from_name("nope"), PREDICTOR_COUNT);
 }
 
 MTS_TEST(flags_are_distinct_single_bits)
@@ -252,6 +266,7 @@ static const Mts_Test tests[] = {
   MTS_TEST_ENTRY(axes_index_vec3),
   MTS_TEST_ENTRY(identity_quaternion_is_w_first),
   MTS_TEST_ENTRY(predictor_ids_are_dense_and_distinct),
+  MTS_TEST_ENTRY(predictor_names_roundtrip),
   MTS_TEST_ENTRY(flags_are_distinct_single_bits),
   MTS_TEST_ENTRY(forecast_holds_k_max_steps_per_axis),
   MTS_TEST_ENTRY(forecast_survives_mailbox),

@@ -1,16 +1,22 @@
 /* ===================================================================================================
  * core/include/core/fusion/fusion.h
  *
- * SEAM HEADER: interface only, implementation to come.
- *
  * Orientation estimation, magnetometer correction, online gyro bias and
  * gravity removal. Input: one calibrated Raw_Sample. Output: orientation
  * and gravity-free linear acceleration in the body frame. No displacement
  * here (that is separation's job).
  *
- * Estimator still to choose (Mahony / Madgwick / error-state KF): Fusion is
- * opaque so the header does not depend on that choice. Fusion_Config gets
- * the estimator's gains once it is chosen.
+ * v0 estimator: Mahony's nonlinear complementary filter, 9 DOF. The gyro
+ * is integrated (exact rotation per step), and corrected toward gravity
+ * (accel) and magnetic north (mag) with a PI law: kp pulls the attitude,
+ * ki learns the gyro bias online. Details in fusion.c. Fusion is opaque:
+ * a different estimator can replace it behind this header.
+ *  - accel corrects only while |a| is within accel_gate of 1 g: under
+ *    strong linear acceleration it does not point at gravity
+ *  - mag corrects only on fresh samples (SAMPLE_MAG_FRESH), and only the
+ *    heading: a disturbed field can turn the yaw, never tilt the board
+ *  - the first sample sets the attitude directly (tilt from accel, heading
+ *    from mag), so there is no slow start from identity
  *
  * Contract (all core stage 1 modules):
  *  - create allocates (startup only), update never allocates
@@ -44,8 +50,21 @@ typedef struct Fusion Fusion;
 typedef struct Fusion_Config
 {
   double rate_hz; // measured sample rate (Hat_Info::rate_hz)
-  // + estimator gains once the estimator is chosen
+  double kp; // rad/s per unit of attitude error: the correction's bandwidth (~kp / 2 pi Hz)
+  double ki; // rad/s^2 per unit of error: online gyro bias
+  double accel_gate; // fraction of g: accel corrects only while ||a| - g| < accel_gate * g
+  double settle_s; // FUSION_CONVERGED after this long since the first sample
 } Fusion_Config;
+
+/* kp 1 (0.16 Hz: tremor at 4-12 Hz barely moves the attitude), ki 0.05
+ * (a gyro bias is learned in about kp / ki = 20 s), settle 2 s, gate 0.03 g.
+ * The gate checks |a| only, and |a| grows with the square of a sideways
+ * push: 0.03 g catches 3 m/s^2 sideways (|a| + 0.46) but not a gentle
+ * 1 m/s^2 one (|a| + 0.05). Tremor (~0.5 m/s^2) passes when sideways and
+ * is gated when along gravity, which costs nothing: the gyro carries the
+ * attitude through. A better test of "is this gravity" is for the next
+ * estimator. */
+Fusion_Config fusion_config_default(double rate_hz);
 
 typedef struct Fusion_Output
 {
@@ -56,7 +75,7 @@ typedef struct Fusion_Output
   int64_t delay_ns;
 } Fusion_Output;
 
-// NULL (and a logged error) on a bad config or out of memory
+// NULL (and a logged error) on a bad config (rate not > 0, a gain < 0, ...) or out of memory
 Fusion* fusion_create(const Fusion_Config* cfg);
 
 // NULL is fine

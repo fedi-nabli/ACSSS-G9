@@ -10,6 +10,7 @@ import type {
   SpectrumMessage,
   StatusMessage,
   Vec3,
+  Imu6,
 } from './types.ts'
 
 const SERVER_STATES = new Set<ServerState>([
@@ -103,6 +104,42 @@ function asVec3OrNull(value: unknown): Vec3 | null | undefined {
   return asVec3(value)
 }
 
+function asImu6(value: unknown): Imu6 | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const keys = [
+    'ax_g', 'ay_g', 'az_g',
+    'gx_rad_s', 'gy_rad_s', 'gz_rad_s'
+  ] as const;
+
+  for (const key of keys) {
+    if (asNumber(value[key]) === undefined) return undefined;
+  }
+
+  return {
+    ax_g: value.ax_g as number,
+    ay_g: value.ay_g as number,
+    az_g: value.az_g as number,
+    gx_rad_s: value.gx_rad_s as number,
+    gy_rad_s: value.gy_rad_s as number,
+    gz_rad_s: value.gz_rad_s as number
+  };
+}
+
+/* function asImuArray(value: unknown): Imu6[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const result: Imu6[] = [];
+
+  for (const item of value) {
+    const imu = asImu6(item);
+    if (!imu) return undefined;
+    result.push(imu);
+  }
+
+  return result;
+} */
+
 function asNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined
   const out: number[] = []
@@ -124,22 +161,48 @@ function asStringArray(value: unknown): string[] | undefined {
   return out
 }
 
-function asPrediction(value: unknown): Prediction | undefined {
-  if (!isRecord(value)) return undefined
-  const predictor_id = asString(value.predictor_id)
-  const forecast_mm = asVec3OrNull(value.forecast_mm)
-  const residual_mm = asVec3OrNull(value.residual_mm)
+/* function asPrediction(value: unknown): Prediction | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const predictor_id = asString(value.predictor_id);
+  const forecast_mm = asVec3OrNull(value.forecast_mm);
+  const residual_mm = asVec3OrNull(value.residual_mm);
+
   if (
     predictor_id === undefined ||
     forecast_mm === undefined ||
     residual_mm === undefined
   ) {
+    return undefined;
+  }
+
+  const forecast_rotation_mrad = asVec3OrNull(value.forecast_rotation_mrad)
+  const residual_rotation_mrad = asVec3OrNull(value.residual_rotation_mrad)
+  if (forecast_rotation_mrad === undefined || residual_rotation_mrad === undefined) return undefined
+  return { predictor_id, forecast_mm, residual_mm, forecast_rotation_mrad, residual_rotation_mrad }
+} */
+
+function asPrediction(value: unknown): Prediction | undefined {
+  if (!isRecord(value)) return undefined
+  const predictor_id = asString(value.predictor_id)
+  const forecast_mm = asVec3OrNull(value.forecast_mm)
+  const residual_mm = asVec3OrNull(value.residual_mm)
+  const forecast_rotation_mrad = asVec3OrNull(value.forecast_rotation_mrad)
+  const residual_rotation_mrad = asVec3OrNull(value.residual_rotation_mrad)
+  if (
+    predictor_id === undefined ||
+    forecast_mm === undefined ||
+    residual_mm === undefined ||
+    forecast_rotation_mrad === undefined ||
+    residual_rotation_mrad === undefined
+  ) {
     return undefined
   }
-  return { predictor_id, forecast_mm, residual_mm }
+  return { predictor_id, forecast_mm, residual_mm, forecast_rotation_mrad, residual_rotation_mrad }
 }
 
-function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+/* function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+  console.error(raw)
   const sequence = asNumber(raw.sequence)
   const timestamp_ns = asNumber(raw.timestamp_ns)
   const gap_before = asBool(raw.gap_before)
@@ -151,7 +214,19 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
   const tremor_amplitude_mm = asNumber(raw.tremor_amplitude_mm)
   const tremor_confidence = asNumber(raw.tremor_confidence)
   const pipeline_delay_ms = asNumber(raw.pipeline_delay_ms)
+  const imu = raw.imu === undefined
+    ? undefined
+    : asImu6(raw.imu);
+
+  if (raw.imu !== undefined && imu === undefined) {
+    return undefined;
+  }
   const counter_signal_mm = asVec3OrNull(raw.counter_signal_mm)
+  const counter_signal_rad = asVec3OrNull(raw.counter_rotation_mrad)
+  console.error(counter_signal_mm)
+  console.error(counter_signal_rad)
+  const counter_signal = asImu6({ 'ax_g': counter_signal_mm![0], 'ay_g': counter_signal_mm![1], 'az_g': counter_signal_mm![2], 'gx_rad_s': counter_signal_rad![0], 'gy_rad_s': counter_signal_rad![1], 'gz_rad_s': counter_signal_rad![2] });
+  console.error(counter_signal)
   if (
     sequence === undefined ||
     timestamp_ns === undefined ||
@@ -166,6 +241,96 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     tremor_confidence === undefined ||
     pipeline_delay_ms === undefined ||
     counter_signal_mm === undefined ||
+    counter_signal_rad === undefined ||
+    counter_signal === undefined ||
+    !Array.isArray(raw.predictions)
+  ) {
+    return undefined
+  }
+
+  const predictions: Prediction[] = []
+  for (const entry of raw.predictions) {
+    const parsed = asPrediction(entry)
+    if (!parsed) return undefined
+    predictions.push(parsed)
+  }
+
+  return {
+    type: 'frame',
+    sequence,
+    timestamp_ns,
+    ... (imu !== undefined ? { imu } : {}),
+    gap_before,
+    tremor_active,
+    tremor_displacement_mm,
+    tremor_acceleration_ms2,
+    orientation_wxyz: [
+      orientation[0]!,
+      orientation[1]!,
+      orientation[2]!,
+      orientation[3]!,
+    ],
+    tremor_frequency_hz,
+    tremor_amplitude_mm,
+    tremor_confidence,
+    pipeline_delay_ms,
+    counter_signal,
+    predictions,
+  }
+} */
+
+function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+  // Translation
+  const sequence = asNumber(raw.sequence)
+  const timestamp_ns = asNumber(raw.timestamp_ns)
+  const gap_before = asBool(raw.gap_before)
+  const tremor_active = asBool(raw.tremor_active)
+  const tremor_displacement_mm = asVec3(raw.tremor_displacement_mm)
+  const tremor_acceleration_ms2 = asVec3(raw.tremor_acceleration_ms2)
+  const tremor_frequency_hz = asNumber(raw.tremor_frequency_hz)
+  const tremor_amplitude_mm = asNumber(raw.tremor_amplitude_mm)
+  const tremor_confidence = asNumber(raw.tremor_confidence)
+  const counter_signal_mm = asVec3OrNull(raw.counter_signal_mm) // null = gate closed, not an error
+
+  // Rotation (new)
+  const rotation_active = asBool(raw.rotation_active)
+  const tremor_rotation_mrad = asVec3(raw.tremor_rotation_mrad)
+  const tremor_angular_rate_rad_s = asVec3(raw.tremor_angular_rate_rad_s)
+  const rotation_frequency_hz = asNumber(raw.rotation_frequency_hz)
+  const rotation_amplitude_mrad = asNumber(raw.rotation_amplitude_mrad)
+  const rotation_confidence = asNumber(raw.rotation_confidence)
+  const counter_rotation_mrad = asVec3OrNull(raw.counter_rotation_mrad)
+
+  // Shared
+  const orientation = asNumberArray(raw.orientation_wxyz)
+  const pipeline_delay_ms = asNumber(raw.pipeline_delay_ms)
+
+  // Raw sensor, optional
+  const imu = raw.imu === undefined ? undefined : asImu6(raw.imu)
+  if (raw.imu !== undefined && imu === undefined) return undefined
+
+  // undefined = missing or wrong type: drop the frame. null counters are valid
+  if (
+    sequence === undefined ||
+    timestamp_ns === undefined ||
+    gap_before === undefined ||
+    tremor_active === undefined ||
+    tremor_displacement_mm === undefined ||
+    tremor_acceleration_ms2 === undefined ||
+    tremor_frequency_hz === undefined ||
+    tremor_amplitude_mm === undefined ||
+    tremor_confidence === undefined ||
+    counter_signal_mm === undefined ||
+    rotation_active === undefined ||
+    tremor_rotation_mrad === undefined ||
+    tremor_angular_rate_rad_s === undefined ||
+    rotation_frequency_hz === undefined ||
+    rotation_amplitude_mrad === undefined ||
+    rotation_confidence === undefined ||
+    counter_rotation_mrad === undefined ||
+    orientation === undefined ||
+    orientation.length !== 4 ||
+    pipeline_delay_ms === undefined ||
     !Array.isArray(raw.predictions)
   ) {
     return undefined
@@ -184,19 +349,22 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     timestamp_ns,
     gap_before,
     tremor_active,
+    rotation_active,
     tremor_displacement_mm,
     tremor_acceleration_ms2,
-    orientation_wxyz: [
-      orientation[0]!,
-      orientation[1]!,
-      orientation[2]!,
-      orientation[3]!,
-    ],
+    tremor_rotation_mrad,
+    tremor_angular_rate_rad_s,
+    ...(imu !== undefined ? { imu } : {}),
+    orientation_wxyz: [orientation[0]!, orientation[1]!, orientation[2]!, orientation[3]!],
     tremor_frequency_hz,
     tremor_amplitude_mm,
     tremor_confidence,
+    rotation_frequency_hz,
+    rotation_amplitude_mrad,
+    rotation_confidence,
     pipeline_delay_ms,
     counter_signal_mm,
+    counter_rotation_mrad,
     predictions,
   }
 }

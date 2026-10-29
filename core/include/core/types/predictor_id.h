@@ -13,7 +13,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 21 Oct 2026
  * ===================================================================================================
  */
 
@@ -21,6 +21,8 @@
 #define MTS_CORE_TYPES_PREDICTOR_ID_H
 
 #include <stdint.h>
+#include <stddef.h>
+#include <string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,6 +36,29 @@ typedef uint32_t Predictor_Id;
 #define PREDICTOR_WFLC 3u
 #define PREDICTOR_WFLC_KALMAN 4u // Zhou et al.
 #define PREDICTOR_COUNT 5u
+
+/* Wire and config name of a predictor: the ONE table of names (protocol,
+ * config and Predictor_Ops::name all use it). NULL for an unknown id. */
+static inline const char* predictor_name(Predictor_Id id)
+{
+  static const char* const NAMES[PREDICTOR_COUNT] = {
+    "inversion", "harmonic", "fft_oscillator", "wflc", "wflc_kalman",
+  };
+  return id < PREDICTOR_COUNT ? NAMES[id] : NULL;
+}
+
+// Inverse of predictor_name. PREDICTOR_COUNT if no predictor has that name
+static inline Predictor_Id predictor_id_from_name(const char* name)
+{
+  for (Predictor_Id id = 0; id < PREDICTOR_COUNT; id++)
+  {
+    if (strcmp(predictor_name(id), name) == 0)
+    {
+      return id;
+    }
+  }
+  return PREDICTOR_COUNT;
+}
 
 #ifdef __cplusplus
 }

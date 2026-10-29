@@ -90,9 +90,9 @@ function createSession(socket) {
     const steps =
       kind === 'full'
         ? [
-            ['hold_still', 1200],
-            ['rotate', 1600],
-          ]
+          ['hold_still', 1200],
+          ['rotate', 1600],
+        ]
         : [['quick_zero', 700]]
     let i = 0
     const tick = () => {
@@ -139,10 +139,39 @@ function createSession(socket) {
     const residual = (pred) =>
       tremorOn ? disp.map((v, i) => v - pred[i]) : null
     const gap = sequence % 240 === 0
+
+
+    // simulated IMU measurements
+    const makeImu = (time) => {
+      const p = 2 * Math.PI * f * time;
+      const factor = (2 * Math.PI * f) ** 2 * 0.001 / 9.80665;
+
+      return {
+        ax_g: amp * Math.sin(p) * factor,
+        ay_g: amp * 0.18 * Math.sin(p + 0.4) * factor,
+        az_g: amp * 0.12 * Math.cos(p) * factor,
+
+        gx_rad_s: amp * 0.05 * Math.cos(p),
+        gy_rad_s: amp * 0.015 * Math.cos(p + 0.4),
+        gz_rad_s: -amp * 0.012 * Math.sin(p),
+      };
+    };
+
+    // current measurement
+    const imu = makeImu(t);
+
+    // five future predicted measurements
+    const forecastImu = Array.from(
+      { length: 5 },
+      (_, i) => makeImu(t + (i + 1) / SAMPLE_HZ)
+    );
+
+
     return {
       type: 'frame',
       sequence,
       timestamp_ns: Math.round(timestampNs),
+      imu: imu,
       gap_before: gap,
       tremor_active: tremorOn,
       tremor_displacement_mm: disp,
@@ -159,11 +188,13 @@ function createSession(socket) {
         {
           predictor_id: 'inversion',
           forecast_mm: inv,
+          forecast_imu: forecastImu,
           residual_mm: residual(inv),
         },
         {
           predictor_id: 'wflc',
           forecast_mm: wflc,
+          forecast_imu: forecastImu,
           residual_mm: residual(wflc),
         },
       ],

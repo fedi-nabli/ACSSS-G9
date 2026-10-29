@@ -85,6 +85,8 @@ Hat_Status Hat_Sim::read_sample(Raw_Sample& out)
   {
     gyro[a] = p.gyro_bias_rads + p.gyro_noise_rads * rng_.gaussian();
   }
+  // Rotational tremor: the board turning back and forth about z (no draw: the sequence stays the same)
+  gyro[2] += p.tremor_rot_rads * std::sin(TWO_PI * p.tremor_hz * t);
 
   bool saturated = false;
   for (int a = 0; a < 3; a++)
@@ -133,9 +135,9 @@ void Hat_Sim::show(const Led_Command& cmd)
 
 Hat_Info Hat_Sim::info() const
 {
-  // Virtual timestamps: the rate is exactly the requested one
-  return { true, cfg_.sample_rate_hz, accel_range_ms2_, gyro_range_rads_ };
+  // Virtual timestamps: the rate is exactly the requested one, and sample 0
+  // is stamped exactly at the opening
+  return { true, cfg_.sample_rate_hz, accel_range_ms2_, gyro_range_rads_, t0_ns_ };
 }
 
 } // namespace mts
-

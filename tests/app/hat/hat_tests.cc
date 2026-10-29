@@ -10,7 +10,7 @@
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
- * Last Modified: 20 Oct 2026
+ * Last Modified: 22 Oct 2026
  * ===================================================================================================
  */
 
@@ -92,7 +92,7 @@ public:
 
   mts::Hat_Info info() const override
   {
-    return { true, 100.0, 4 * mts::STANDARD_GRAVITY_MS2, 500 * mts::DEG_TO_RAD };
+    return { true, 100.0, 4 * mts::STANDARD_GRAVITY_MS2, 500 * mts::DEG_TO_RAD, 0 };
   }
 
   Led_Command last_{};

@@ -1,8 +1,6 @@
 /* ===================================================================================================
  * core/include/core/calibration/calibration.h
  *
- * SEAM HEADER: interface only, implementation to come.
- *
  * Applies the per-device sensor corrections, the first step of stage 1:
  *   corrected = M * (raw - offset)     per sensor, per sample
  * All values SI and post-normalization (Hat_Real already converted units
@@ -45,11 +43,15 @@ typedef struct Calibration
 
 /* out = raw with all three sensors corrected. seq, t_ns and flags are
  * copied unchanged. raw and out may point to the same sample. */
+/* out = raw with accel, gyro and mag corrected; seq, t_ns and flags kept.
+ * raw and out may be the same sample. */
 void calibration_apply(const Calibration* cal, const Raw_Sample* raw, Raw_Sample* out);
+
+// offset 0, m = I for all three sensors: calibration_apply copies
+void calibration_identity(Calibration* cal);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* MTS_CORE_CALIBRATION_CALIBRATION_H */
-

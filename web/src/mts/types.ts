@@ -27,10 +27,27 @@ export type DropCounters = {
   processing_to_server: number
 }
 
+export type Imu6 = {
+  ax_g: number;
+  ay_g: number;
+  az_g: number;
+  gx_rad_s: number;
+  gy_rad_s: number;
+  gz_rad_s: number;
+};
+
+export type ImuReading = Imu6 & {
+  mx_uT?: number;
+  my_uT?: number;
+  mz_uT?: number;
+};
+
 export type Prediction = {
   predictor_id: string
   forecast_mm: Vec3 | null
   residual_mm: Vec3 | null
+  forecast_rotation_mrad: Vec3 | null
+  residual_rotation_mrad: Vec3 | null
 }
 
 export type FrameMessage = {
@@ -39,14 +56,22 @@ export type FrameMessage = {
   timestamp_ns: number
   gap_before: boolean
   tremor_active: boolean
+  rotation_active: boolean
   tremor_displacement_mm: Vec3
   tremor_acceleration_ms2: Vec3
+  tremor_rotation_mrad: Vec3
+  tremor_angular_rate_rad_s: Vec3
+  imu?: ImuReading
   orientation_wxyz: QuatWxyz
   tremor_frequency_hz: number
   tremor_amplitude_mm: number
   tremor_confidence: number
+  rotation_frequency_hz: number
+  rotation_amplitude_mrad: number
+  rotation_confidence: number
   pipeline_delay_ms: number
   counter_signal_mm: Vec3 | null
+  counter_rotation_mrad: Vec3 | null
   predictions: Prediction[]
 }
 

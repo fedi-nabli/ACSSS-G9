@@ -1,8 +1,6 @@
 /* ===================================================================================================
  * core/include/core/predict/predict.h
  *
- * SEAM HEADER: interface only, implementation to come.
- *
  * Predictor ABI. Every predictor is scalar and runs PER AXIS: the
  * Prediction thread owns three instances (x, y, z) of each enabled
  * predictor. Input: one axis of Tremor_Sample::tremor_disp per sample.
@@ -21,7 +19,11 @@
  *
  * Adding a predictor: next PREDICTOR_* id (core/types/predictor_id.h), its
  * member in Predictor_Config.params if it has parameters, its Predictor_Ops,
- * and an entry in the registry.
+ * and an entry in the registry (predict.c). Its state_size must stay within
+ * PREDICTOR_STATE_MAX (checked by the registry tests), so callers can size
+ * their state blocks once for any predictor.
+ *
+ * Registered so far: inversion, wflc. wflc_kalman is next.
  *
  * Authors: Fedi Nabli
  * Date: 20 Oct 2026
@@ -80,6 +82,9 @@ typedef struct Predictor_Config
   } params;
 } Predictor_Config;
 
+// The largest state block any registered predictor needs, bytes
+#define PREDICTOR_STATE_MAX 2048
+
 typedef struct Predictor_Ops
 {
   Predictor_Id id; // PREDICTOR_*: Forecast::predictor_id and the mailbox slot index
@@ -101,6 +106,11 @@ typedef struct Predictor_Ops
   int64_t (*delay_ns)(const void* state);
 } Predictor_Ops;
 
+/* A ready-to-use config for predictor id: rate, horizon, and that
+ * predictor's default params (wflc: one harmonic, the steps from
+ * core/wflc's sweep). Ids without params get zeros there. */
+Predictor_Config predictor_config_default(Predictor_Id id, double rate_hz, uint32_t horizon_steps);
+
 // Registry. NULL if no predictor has that name / id
 const Predictor_Ops* predictor_find(const char* name);
 const Predictor_Ops* predictor_by_id(Predictor_Id id);
@@ -110,4 +120,3 @@ const Predictor_Ops* predictor_by_id(Predictor_Id id);
 #endif
 
 #endif /* MTS_CORE_PREDICT_PREDICT_H */
-
