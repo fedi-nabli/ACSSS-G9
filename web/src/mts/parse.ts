@@ -126,7 +126,7 @@ function asImu6(value: unknown): Imu6 | undefined {
   };
 }
 
-function asImuArray(value: unknown): Imu6[] | undefined {
+/* function asImuArray(value: unknown): Imu6[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
   const result: Imu6[] = [];
@@ -138,7 +138,7 @@ function asImuArray(value: unknown): Imu6[] | undefined {
   }
 
   return result;
-}
+} */
 
 function asNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined
@@ -161,7 +161,7 @@ function asStringArray(value: unknown): string[] | undefined {
   return out
 }
 
-function asPrediction(value: unknown): Prediction | undefined {
+/* function asPrediction(value: unknown): Prediction | undefined {
   if (!isRecord(value)) return undefined;
 
   const predictor_id = asString(value.predictor_id);
@@ -176,24 +176,32 @@ function asPrediction(value: unknown): Prediction | undefined {
     return undefined;
   }
 
-  const forecast_imu =
-    value.forecast_imu === undefined
-      ? undefined
-      : asImuArray(value.forecast_imu);
+  const forecast_rotation_mrad = asVec3OrNull(value.forecast_rotation_mrad)
+  const residual_rotation_mrad = asVec3OrNull(value.residual_rotation_mrad)
+  if (forecast_rotation_mrad === undefined || residual_rotation_mrad === undefined) return undefined
+  return { predictor_id, forecast_mm, residual_mm, forecast_rotation_mrad, residual_rotation_mrad }
+} */
 
-  if (value.forecast_imu !== undefined && forecast_imu === undefined) {
-    return undefined;
+function asPrediction(value: unknown): Prediction | undefined {
+  if (!isRecord(value)) return undefined
+  const predictor_id = asString(value.predictor_id)
+  const forecast_mm = asVec3OrNull(value.forecast_mm)
+  const residual_mm = asVec3OrNull(value.residual_mm)
+  const forecast_rotation_mrad = asVec3OrNull(value.forecast_rotation_mrad)
+  const residual_rotation_mrad = asVec3OrNull(value.residual_rotation_mrad)
+  if (
+    predictor_id === undefined ||
+    forecast_mm === undefined ||
+    residual_mm === undefined ||
+    forecast_rotation_mrad === undefined ||
+    residual_rotation_mrad === undefined
+  ) {
+    return undefined
   }
-
-  return {
-    predictor_id,
-    forecast_mm,
-    residual_mm,
-    forecast_imu
-  };
+  return { predictor_id, forecast_mm, residual_mm, forecast_rotation_mrad, residual_rotation_mrad }
 }
 
-function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+/* function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
   console.error(raw)
   const sequence = asNumber(raw.sequence)
   const timestamp_ns = asNumber(raw.timestamp_ns)
@@ -267,6 +275,96 @@ function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
     tremor_confidence,
     pipeline_delay_ms,
     counter_signal,
+    predictions,
+  }
+} */
+
+function decodeFrame(raw: Record<string, unknown>): FrameMessage | undefined {
+  // Translation
+  const sequence = asNumber(raw.sequence)
+  const timestamp_ns = asNumber(raw.timestamp_ns)
+  const gap_before = asBool(raw.gap_before)
+  const tremor_active = asBool(raw.tremor_active)
+  const tremor_displacement_mm = asVec3(raw.tremor_displacement_mm)
+  const tremor_acceleration_ms2 = asVec3(raw.tremor_acceleration_ms2)
+  const tremor_frequency_hz = asNumber(raw.tremor_frequency_hz)
+  const tremor_amplitude_mm = asNumber(raw.tremor_amplitude_mm)
+  const tremor_confidence = asNumber(raw.tremor_confidence)
+  const counter_signal_mm = asVec3OrNull(raw.counter_signal_mm) // null = gate closed, not an error
+
+  // Rotation (new)
+  const rotation_active = asBool(raw.rotation_active)
+  const tremor_rotation_mrad = asVec3(raw.tremor_rotation_mrad)
+  const tremor_angular_rate_rad_s = asVec3(raw.tremor_angular_rate_rad_s)
+  const rotation_frequency_hz = asNumber(raw.rotation_frequency_hz)
+  const rotation_amplitude_mrad = asNumber(raw.rotation_amplitude_mrad)
+  const rotation_confidence = asNumber(raw.rotation_confidence)
+  const counter_rotation_mrad = asVec3OrNull(raw.counter_rotation_mrad)
+
+  // Shared
+  const orientation = asNumberArray(raw.orientation_wxyz)
+  const pipeline_delay_ms = asNumber(raw.pipeline_delay_ms)
+
+  // Raw sensor, optional
+  const imu = raw.imu === undefined ? undefined : asImu6(raw.imu)
+  if (raw.imu !== undefined && imu === undefined) return undefined
+
+  // undefined = missing or wrong type: drop the frame. null counters are valid
+  if (
+    sequence === undefined ||
+    timestamp_ns === undefined ||
+    gap_before === undefined ||
+    tremor_active === undefined ||
+    tremor_displacement_mm === undefined ||
+    tremor_acceleration_ms2 === undefined ||
+    tremor_frequency_hz === undefined ||
+    tremor_amplitude_mm === undefined ||
+    tremor_confidence === undefined ||
+    counter_signal_mm === undefined ||
+    rotation_active === undefined ||
+    tremor_rotation_mrad === undefined ||
+    tremor_angular_rate_rad_s === undefined ||
+    rotation_frequency_hz === undefined ||
+    rotation_amplitude_mrad === undefined ||
+    rotation_confidence === undefined ||
+    counter_rotation_mrad === undefined ||
+    orientation === undefined ||
+    orientation.length !== 4 ||
+    pipeline_delay_ms === undefined ||
+    !Array.isArray(raw.predictions)
+  ) {
+    return undefined
+  }
+
+  const predictions: Prediction[] = []
+  for (const entry of raw.predictions) {
+    const parsed = asPrediction(entry)
+    if (!parsed) return undefined
+    predictions.push(parsed)
+  }
+
+  return {
+    type: 'frame',
+    sequence,
+    timestamp_ns,
+    gap_before,
+    tremor_active,
+    rotation_active,
+    tremor_displacement_mm,
+    tremor_acceleration_ms2,
+    tremor_rotation_mrad,
+    tremor_angular_rate_rad_s,
+    ...(imu !== undefined ? { imu } : {}),
+    orientation_wxyz: [orientation[0]!, orientation[1]!, orientation[2]!, orientation[3]!],
+    tremor_frequency_hz,
+    tremor_amplitude_mm,
+    tremor_confidence,
+    rotation_frequency_hz,
+    rotation_amplitude_mrad,
+    rotation_confidence,
+    pipeline_delay_ms,
+    counter_signal_mm,
+    counter_rotation_mrad,
     predictions,
   }
 }
