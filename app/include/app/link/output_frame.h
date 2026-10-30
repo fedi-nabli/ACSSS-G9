@@ -55,6 +55,9 @@ typedef struct Frame_Prediction
   Vec3 residual; // m: actual minus forecast
   Vec3 forecast_rot; // rad
   Vec3 residual_rot; // rad
+  // LSTM future IMU measurements
+  uint32_t imu_forecast_count;
+  float imu_future[5][6];
 } Frame_Prediction;
 
 typedef struct Output_Frame

@@ -228,6 +228,16 @@ td {
   padding: 2px;
 }
 
+.input-blue {
+  color: #0062ff;
+}
+
+.input-green {
+  color: #22c55e;
+}
+.input-red {
+  color: #ef4444;
+}
 .spec-bar {
   flex: 1;
   min-width: 1px;

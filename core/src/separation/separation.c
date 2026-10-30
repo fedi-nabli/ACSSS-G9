@@ -150,3 +150,21 @@ void separation_update(Separation* s, const Vec3* lin_acc_body, Separation_Outpu
   }
   out->delay_ns = s->delay_ns;
 }
+
+bool separation_copy_state(
+    Separation* dst,
+    const Separation* src)
+{
+    if (dst == NULL || src == NULL)
+    {
+        return false;
+    }
+
+    if (dst == src)
+    {
+        return true;
+    }
+
+    *dst = *src;
+    return true;
+}

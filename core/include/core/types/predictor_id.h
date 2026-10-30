@@ -35,15 +35,21 @@ typedef uint32_t Predictor_Id;
 #define PREDICTOR_FFT_OSCILLATOR 2u
 #define PREDICTOR_WFLC 3u
 #define PREDICTOR_WFLC_KALMAN 4u // Zhou et al.
-#define PREDICTOR_COUNT 5u
+#define PREDICTOR_LSTM 5u
+#define PREDICTOR_COUNT 6u
 
 /* Wire and config name of a predictor: the ONE table of names (protocol,
  * config and Predictor_Ops::name all use it). NULL for an unknown id. */
 static inline const char* predictor_name(Predictor_Id id)
 {
-  static const char* const NAMES[PREDICTOR_COUNT] = {
-    "inversion", "harmonic", "fft_oscillator", "wflc", "wflc_kalman",
-  };
+ static const char* const NAMES[PREDICTOR_COUNT] = {
+  "inversion",
+  "harmonic",
+  "fft_oscillator",
+  "wflc",
+  "wflc_kalman",
+  "lstm"
+};
   return id < PREDICTOR_COUNT ? NAMES[id] : NULL;
 }
 

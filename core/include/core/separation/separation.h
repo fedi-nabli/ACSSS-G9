@@ -33,6 +33,10 @@
 #ifndef MTS_CORE_SEPARATION_SEPARATION_H
 #define MTS_CORE_SEPARATION_SEPARATION_H
 
+
+#include <stdbool.h>
+
+
 #include <core/types/vec.h>
 
 #include <stdint.h>
@@ -78,6 +82,12 @@ void separation_reset(Separation* s);
 
 // lin_acc_body: Fusion_Output::lin_acc_body of the same sample
 void separation_update(Separation* s, const Vec3* lin_acc_body, Separation_Output* out);
+
+// Copy an existing initialized Separation instance's state.
+bool separation_copy_state(
+    Separation* dst,
+    const Separation* src
+);
 
 #ifdef __cplusplus
 }

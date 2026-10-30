@@ -64,7 +64,11 @@ Runtime_Settings default_runtime_settings()
 {
   Runtime_Settings s;
   std::memset(&s, 0, sizeof(s));
-  s.enabled_mask = (UINT32_C(1) << PREDICTOR_INVERSION) | (UINT32_C(1) << PREDICTOR_WFLC);
+    s.enabled_mask =
+      (UINT32_C(1) << PREDICTOR_INVERSION) |
+      (UINT32_C(1) << PREDICTOR_WFLC) |
+      (UINT32_C(1) << PREDICTOR_LSTM);
+
   s.active_predictor_id = PREDICTOR_WFLC;
   s.horizon_ns = 30 * MTS_TIME_NS_PER_MS;
   s.metrics_hz = 2.0;

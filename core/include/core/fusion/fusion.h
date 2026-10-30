@@ -36,6 +36,8 @@
 #include <core/types/raw_sample.h>
 #include <core/types/vec.h>
 
+#include <stdbool.h>
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -86,6 +88,9 @@ void fusion_reset(Fusion* f);
 
 // One calibrated sample in, one output out
 void fusion_update(Fusion* f, const Raw_Sample* calibrated, Fusion_Output* out);
+
+// Copy an existing initialized Fusion instance's state.
+bool fusion_copy_state(Fusion* dst, const Fusion* src);
 
 #ifdef __cplusplus
 }

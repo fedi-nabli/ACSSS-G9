@@ -435,6 +435,47 @@ void Protocol_Encoder::encode_frame(const Output_Frame& f, std::string& out) con
     append_vec3_or_null(out, p.forecast_rot, RAD_TO_MRAD, forecast);
     append_key(out, "residual_rotation_mrad");
     append_vec3_or_null(out, p.residual_rot, RAD_TO_MRAD, (p.flags & PRED_RESIDUAL_ROT_VALID) != 0);
+    
+    // Send future IMU predictions from LSTM
+    if (p.imu_forecast_count > 0)
+    {
+      static const char* keys[6] = {
+        "ax_g",
+        "ay_g",
+        "az_g",
+        "gx_rad_s",
+        "gy_rad_s",
+        "gz_rad_s"
+      };
+
+      append_key(out, "forecast_imu");
+      out.push_back('[');
+
+      const uint32_t count =
+        p.imu_forecast_count < 5
+          ? p.imu_forecast_count
+          : 5;
+
+      for (uint32_t t = 0; t < count; ++t)
+      {
+        if (t > 0)
+          out.push_back(',');
+
+        out += "{\"ax_g\":";
+        append_number(out, p.imu_future[t][0]);
+
+        for (int c = 1; c < 6; ++c)
+        {
+          append_key(out, keys[c]);
+          append_number(out, p.imu_future[t][c]);
+        }
+
+        out.push_back('}');
+      }
+
+      out.push_back(']');
+    }
+
     out.push_back('}');
   }
   out.push_back(']');

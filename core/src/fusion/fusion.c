@@ -323,3 +323,19 @@ void fusion_update(Fusion* f, const Raw_Sample* s, Fusion_Output* out)
   out->pad = 0;
   out->delay_ns = 0; // instantaneous: the attitude only lags in what it removes as gravity
 }
+
+bool fusion_copy_state(Fusion* dst, const Fusion* src)
+{
+    if (dst == NULL || src == NULL)
+    {
+        return false;
+    }
+
+    if (dst == src)
+    {
+        return true;
+    }
+
+    *dst = *src;
+    return true;
+}

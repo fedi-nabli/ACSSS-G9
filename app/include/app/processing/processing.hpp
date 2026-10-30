@@ -54,6 +54,9 @@
 #include <utils/ring_buffer/queue.hpp>
 #include <utils/time/time.h>
 
+#include <core/onnx/onnx_predictor.hh>
+#include <array>
+
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -76,6 +79,7 @@ constexpr double ROTATION_MIN_AMP_RAD = 1e-3;
 class Processing_Core
 {
 public:
+
   // rate_hz: Hat_Info::rate_hz. Builds stage 1; see valid()
   explicit Processing_Core(double rate_hz);
   ~Processing_Core();
@@ -100,6 +104,19 @@ private:
   // Predictor axes: 0-2 translation x y z, 3-5 rotation x y z
   static constexpr int AXES = 6;
 
+  // LSTM model
+  std::unique_ptr<core::onnx::OnnxPredictor> lstm_;
+
+  // 30 timestamps, 6 IMU channels each
+  core::onnx::SensorWindow lstm_window_{};
+
+  // Samples collected since the last reset
+  std::size_t lstm_samples_ = 0;
+
+  Fusion* fusion_predict_ = nullptr;
+Separation* separation_predict_ = nullptr;
+Separation* separation_rot_predict_ = nullptr;
+
   struct Slot
   {
     Predictor_Id id;
@@ -110,6 +127,7 @@ private:
   };
 
   void reset_predictors();
+
 
   double rate_hz_;
   Calibration cal_;

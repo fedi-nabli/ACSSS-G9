@@ -98,23 +98,22 @@ export default function SignalGraph({ title, data }: SignalGraphProps) {
       </div>
 
       <div className="grid grid-cols-4 justify-between mt-3 text-sm">
-        <div>
-          <p className="text-gray-400">Input</p>
-          <p className="text-blue-500 font-mono">
+        <div className="input-blue">
+          <p>Input</p>
+          <p style={{ fontFamily: "var(--mono)" }}>
             {fmt(latest?.input)}
           </p>
         </div>
 
-        <div>
-          <p className="text-gray-400">Counter</p>
-          <p className="text-red-500 font-mono">
+        <div className="input-red">
+          <p>Counter</p>
+          <p style={{ fontFamily: "var(--mono)" }}>
             {fmt(latest?.counter)}
           </p>
         </div>
-
-        <div>
-          <p className="text-gray-400">Result</p>
-          <p className="text-green-500 font-mono">
+        <div className="input-green">
+          <p>Resultant</p>
+          <p style={{ fontFamily: "var(--mono)" }}>
             {fmt(latest?.result)}
           </p>
         </div>
